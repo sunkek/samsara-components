@@ -213,7 +213,9 @@ func TestIntegration_Get_NoRows(t *testing.T) {
 	startComp(t, comp)
 	ctx := context.Background()
 
-	var dst struct{ Val string `db:"val"` }
+	var dst struct {
+		Val string `db:"val"`
+	}
 	err := comp.Get(ctx, &dst, `SELECT 1 WHERE false`)
 	if !errors.Is(err, postgresql.ErrNoRows) {
 		t.Fatalf("expected ErrNoRows, got %v", err)
@@ -241,7 +243,9 @@ func TestIntegration_Transaction_Commit(t *testing.T) {
 		t.Fatalf("CommitTx: %v", err)
 	}
 
-	var dst struct{ Val string `db:"val"` }
+	var dst struct {
+		Val string `db:"val"`
+	}
 	if err := comp.Get(ctx, &dst, `SELECT val FROM _sc_tx_test LIMIT 1`); err != nil {
 		t.Fatalf("Get after commit: %v", err)
 	}
@@ -274,7 +278,9 @@ func TestIntegration_Transaction_Rollback(t *testing.T) {
 		t.Fatalf("expected inErr in chain, got %v", err)
 	}
 
-	var dst struct{ Val string `db:"val"` }
+	var dst struct {
+		Val string `db:"val"`
+	}
 	err = comp.Get(ctx, &dst, `SELECT val FROM _sc_txrb_test LIMIT 1`)
 	if !errors.Is(err, postgresql.ErrNoRows) {
 		t.Fatalf("expected ErrNoRows after rollback, got %v", err)
