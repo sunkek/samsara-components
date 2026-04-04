@@ -1,6 +1,7 @@
 # postgresql
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/sunkek/samsara-components/postgresql.svg)](https://pkg.go.dev/github.com/sunkek/samsara-components/postgresql)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sunkek/samsara-components/postgresql)](https://goreportcard.com/report/github.com/sunkek/samsara-components/postgresql)
 
 A [samsara](https://github.com/sunkek/samsara)-compatible PostgreSQL component
 backed by [pgx/v5](https://github.com/jackc/pgx) connection pooling.

@@ -1,7 +1,6 @@
 # samsara-components
 
 [![CI](https://github.com/sunkek/samsara-components/actions/workflows/ci.yml/badge.svg)](https://github.com/sunkek/samsara-components/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/sunkek/samsara-components/postgresql.svg)](https://pkg.go.dev/github.com/sunkek/samsara-components/postgresql)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Production-ready infrastructure components for [samsara](https://github.com/sunkek/samsara) — the explicit lifecycle runtime for Go services.
