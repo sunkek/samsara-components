@@ -14,10 +14,10 @@ Each component is an independent Go module. Import only what you need.
 | Module | Import path | Description |
 |--------|-------------|-------------|
 | [`postgresql`](./postgresql) | `github.com/sunkek/samsara-components/postgresql` | PostgreSQL connection pool via pgx/v5 |
-| `redis` _(planned)_ | `github.com/sunkek/samsara-components/redis` | Redis client |
-| `rabbitmq` _(planned)_ | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
-| `s3` _(planned)_ | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
+| [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
 | `fiber` _(planned)_ | `github.com/sunkek/samsara-components/fiber` | Fiber HTTP server |
+| `redis` _(planned)_ | `github.com/sunkek/samsara-components/redis` | Redis client |
+| `s3` _(planned)_ | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
 
 ---
 
@@ -27,6 +27,7 @@ Each component is an independent Go module. Import only what you need.
 import (
     "github.com/sunkek/samsara"
     "github.com/sunkek/samsara-components/postgresql"
+    "github.com/sunkek/samsara-components/rabbitmq"
 )
 
 func main() {
@@ -40,6 +41,15 @@ func main() {
         Pass: "secret",
     })
     sup.Add(db, samsara.WithTier(samsara.TierCritical))
+
+    mq := rabbitmq.New(rabbitmq.Config{
+        Host: "localhost",
+        Port: 5432,
+        VHost: "vhost",
+        User: "myuser",
+        Pass: "secret",
+    })
+    sup.Add(mq, samsara.WithTier(samsara.TierCritical))
 
     app := samsara.NewApplication(samsara.WithSupervisor(sup))
     if err := app.Run(); err != nil {
