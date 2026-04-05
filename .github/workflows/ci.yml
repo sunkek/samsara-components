@@ -58,10 +58,8 @@ jobs:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
 
-      - name: Start infrastructure
-        run: make infra-up
-
       - name: Integration tests (race detector)
+        # make test-integration starts infra via its infra-up prerequisite.
         run: make test-integration
 
       - name: Stop infrastructure
