@@ -13,9 +13,9 @@ Each component is an independent Go module. Import only what you need.
 
 | Module | Import path | Description |
 |--------|-------------|-------------|
+| [`fiber`](./fiber) | `github.com/sunkek/samsara-components/fiber` | Fiber HTTP server |
 | [`postgresql`](./postgresql) | `github.com/sunkek/samsara-components/postgresql` | PostgreSQL connection pool via pgx/v5 |
 | [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
-| `fiber` _(planned)_ | `github.com/sunkek/samsara-components/fiber` | Fiber HTTP server |
 | `redis` _(planned)_ | `github.com/sunkek/samsara-components/redis` | Redis client |
 | `s3` _(planned)_ | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
 
@@ -26,12 +26,20 @@ Each component is an independent Go module. Import only what you need.
 ```go
 import (
     "github.com/sunkek/samsara"
+    "github.com/sunkek/samsara-components/fiber"
     "github.com/sunkek/samsara-components/postgresql"
     "github.com/sunkek/samsara-components/rabbitmq"
 )
 
 func main() {
     sup := samsara.NewSupervisor()
+
+    rest := fiber.New(fiber.Config{
+        Host:       "0.0.0.0",
+        Port:       8080,
+        PathPrefix: "/api/v1",
+    })
+    sup.Add(rest, samsara.WithTier(samsara.TierCritical))
 
     db := postgresql.New(postgresql.Config{
         Host: "localhost",
@@ -44,7 +52,7 @@ func main() {
 
     mq := rabbitmq.New(rabbitmq.Config{
         Host: "localhost",
-        Port: 5432,
+        Port: 5672,
         VHost: "vhost",
         User: "myuser",
         Pass: "secret",

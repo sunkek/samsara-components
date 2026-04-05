@@ -18,8 +18,23 @@ samsara-components/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/postgresql
 │   ├── postgresql.go        # component lifecycle (Start, Stop, Health)
 │   ├── db.go                # query API (Select, Get, Exec, transactions)
-│   ├── postgresql_test.go         # unit tests (no database required)
+│   ├── postgresql_test.go              # unit tests (no database required)
 │   └── postgresql_integration_test.go  # integration tests (//go:build integration)
+├── rabbitmq/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/rabbitmq
+│   ├── rabbitmq.go          # component lifecycle (Start, Stop, Health)
+│   ├── messaging.go         # publish/subscribe API
+│   ├── rabbitmq_test.go              # unit tests (no broker required)
+│   └── rabbitmq_integration_test.go  # integration tests (//go:build integration)
+├── fiber/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/fiber
+│   ├── fiber.go             # component lifecycle, config, options
+│   ├── routes.go            # Register / Use API
+│   ├── errors.go            # DefaultErrorHandler, ErrorResponse, HTTPStatuser
+│   ├── swagger.go           # WithSwagger option
+│   ├── helpers.go           # RealIP, ExcludeRoutes, Route, SkipperFunc
+│   ├── fiber_test.go              # unit tests (no server binding required)
+│   └── fiber_integration_test.go  # integration tests (//go:build integration)
 ├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ)
 └── Makefile
 ```
