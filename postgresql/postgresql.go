@@ -20,6 +20,7 @@ package postgresql
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sync"
 	"time"
 
@@ -37,7 +38,7 @@ type Config struct {
 	Name string
 	// User is the database user. Defaults to "postgres".
 	User string
-	// Pass is the database password.
+	// Pass is the database password. Special characters are safely encoded.
 	Pass string
 
 	// SSLMode controls the SSL negotiation mode (disable, require, verify-ca,
@@ -82,10 +83,16 @@ func (c Config) dsn() string {
 	if ssl == "" {
 		ssl = "disable"
 	}
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		user, c.Pass, host, port, name, ssl,
-	)
+	// url.UserPassword percent-encodes special characters in credentials,
+	// preventing DSN injection and parse failures (e.g. passwords with @, /).
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(user, c.Pass),
+		Host:     fmt.Sprintf("%s:%d", host, port),
+		Path:     name,
+		RawQuery: "sslmode=" + ssl,
+	}
+	return u.String()
 }
 
 func (c Config) connectTimeout() time.Duration {
@@ -115,12 +122,10 @@ type Component struct {
 	cfg  Config
 	log  Logger
 	name string
-	pool *pgxpool.Pool
 
-	// mu guards stopCh across the Start/Stop/restart lifecycle.
-	// Start holds a read lock while blocking; Stop acquires a write lock
-	// only to replace stopCh before signalling, so concurrent calls are safe.
-	mu     sync.Mutex
+	// mu guards pool and stopCh across the Start/Stop/restart lifecycle.
+	mu     sync.RWMutex
+	pool   *pgxpool.Pool
 	stopCh chan struct{}
 }
 
@@ -174,6 +179,13 @@ var (
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
 
+// pool returns the current pool under a read lock.
+func (c *Component) getPool() *pgxpool.Pool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pool
+}
+
 // Start creates the connection pool, pings the server to confirm reachability,
 // calls ready() to unblock the supervisor, then blocks until Stop or ctx
 // cancellation.
@@ -181,8 +193,8 @@ func (c *Component) Name() string { return c.name }
 // Start is safe to call multiple times across restarts; each call allocates a
 // fresh stopCh so the previous Stop signal does not bleed into the new run.
 func (c *Component) Start(ctx context.Context, ready func()) error {
-	// Allocate a fresh stopCh for this run. Must happen before any blocking
-	// work so a concurrent Stop always has a valid channel to close.
+	// Allocate a fresh stopCh for this run under the write lock, so a
+	// concurrent Stop always operates on a valid, current channel.
 	c.mu.Lock()
 	c.stopCh = make(chan struct{})
 	stopCh := c.stopCh
@@ -212,7 +224,10 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 		return fmt.Errorf("postgres: ping failed: %w", err)
 	}
 
+	c.mu.Lock()
 	c.pool = pool
+	c.mu.Unlock()
+
 	c.log.Info("postgres: connected", "host", c.cfg.Host)
 
 	ready()
@@ -235,6 +250,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	closed := make(chan struct{})
 	close(closed)
 	c.stopCh = closed
+	pool := c.pool
 	c.mu.Unlock()
 
 	// Signal the currently-running Start (if any) to exit.
@@ -246,10 +262,10 @@ func (c *Component) Stop(ctx context.Context) error {
 		close(ch)
 	}
 
-	if c.pool != nil {
+	if pool != nil {
 		done := make(chan struct{})
 		go func() {
-			c.pool.Close()
+			pool.Close()
 			close(done)
 		}()
 		select {
@@ -264,8 +280,9 @@ func (c *Component) Stop(ctx context.Context) error {
 // Health implements samsara.HealthChecker.
 // Returns a non-nil error if the pool cannot reach the database.
 func (c *Component) Health(ctx context.Context) error {
-	if c.pool == nil {
+	pool := c.getPool()
+	if pool == nil {
 		return fmt.Errorf("postgres: pool not initialised")
 	}
-	return c.pool.Ping(ctx)
+	return pool.Ping(ctx)
 }

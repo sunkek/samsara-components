@@ -53,7 +53,7 @@ var ErrNoRows = pgx.ErrNoRows
 // Select executes sql and scans all result rows into dst.
 // dst must be a pointer to a slice of structs or scalars.
 func (c *Component) Select(ctx context.Context, dst any, sql string, args ...any) error {
-	if err := pgxscan.Select(ctx, c.pool, dst, sql, args...); err != nil {
+	if err := pgxscan.Select(ctx, c.getPool(), dst, sql, args...); err != nil {
 		return fmt.Errorf("postgres select: %w", err)
 	}
 	return nil
@@ -62,7 +62,7 @@ func (c *Component) Select(ctx context.Context, dst any, sql string, args ...any
 // Get executes sql and scans the first result row into dst.
 // dst must be a pointer to a struct or scalar type.
 func (c *Component) Get(ctx context.Context, dst any, sql string, args ...any) error {
-	if err := pgxscan.Get(ctx, c.pool, dst, sql, args...); err != nil {
+	if err := pgxscan.Get(ctx, c.getPool(), dst, sql, args...); err != nil {
 		return fmt.Errorf("postgres get: %w", err)
 	}
 	return nil
@@ -71,7 +71,7 @@ func (c *Component) Get(ctx context.Context, dst any, sql string, args ...any) e
 // Exec executes sql without scanning rows.
 // Useful for INSERT, UPDATE, DELETE, DDL.
 func (c *Component) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	tag, err := c.pool.Exec(ctx, sql, args...)
+	tag, err := c.getPool().Exec(ctx, sql, args...)
 	if err != nil {
 		return tag, fmt.Errorf("postgres exec: %w", err)
 	}
@@ -80,7 +80,7 @@ func (c *Component) Exec(ctx context.Context, sql string, args ...any) (pgconn.C
 
 // BeginTx starts a new transaction.
 func (c *Component) BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error) {
-	tx, err := c.pool.BeginTx(ctx, opts)
+	tx, err := c.getPool().BeginTx(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("postgres begin tx: %w", err)
 	}
