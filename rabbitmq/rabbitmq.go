@@ -241,7 +241,14 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	select {
 	case <-ctx.Done():
 		// Clean shutdown — samsara requires nil on context cancellation.
-		// The dial goroutine will complete on its own; its result is discarded.
+		// The dial goroutine may still succeed after we return. Drain the
+		// channel in a goroutine and close any connection it produces so we
+		// don't leak an open TCP connection to the broker.
+		go func() {
+			if r := <-dialDone; r.conn != nil {
+				_ = r.conn.Close()
+			}
+		}()
 		return nil
 	case <-dialTimer.C:
 		return fmt.Errorf("rabbitmq: dial timed out after %s", c.cfg.connectTimeout())
