@@ -12,6 +12,56 @@ across all of them.
 
 ---
 
+## s3/v0.1.0 — 2026-04-06
+
+Initial release of the S3 component.
+
+### Added
+- `Component` — samsara-compatible S3 component backed by AWS SDK v2
+- `Config` — endpoint, region, key/secret, connect timeout, presign TTL, path-style forcing
+- `WithLogger`, `WithName` options
+- `Upload(ctx, UploadRequest)` — with auto content-type detection (including SVG)
+- `Download(ctx, bucket, key)` — returns `io.ReadCloser`
+- `Delete(ctx, bucket, key)` — single object removal
+- `DeleteByPrefix(ctx, bucket, prefix)` — paginated batch delete
+- `ListKeys(ctx, bucket, prefix)` — paginated key listing
+- `PresignDownload(ctx, PresignRequest)` — time-limited GET URL
+- `PresignUpload(ctx, PresignRequest)` — time-limited PUT URL
+- `ACL` constants: Private, PublicRead, PublicReadWrite, AuthenticatedRead, BucketOwnerRead, BucketOwnerFullControl
+- `PresignRequest.TTL` overrides `Config.PresignTTL` per-call
+- `HeadBucket`-based connectivity check (no `ListBuckets` permission required)
+- Compile-time samsara interface assertion
+- Unit tests (no S3 endpoint required)
+- Integration tests (`//go:build integration`) against LocalStack
+
+---
+
+## redis/v0.1.0 — 2026-04-06
+
+Initial release of the Redis component.
+
+### Added
+- `Component` — samsara-compatible Redis component backed by go-redis/v9
+- `Config` — host, port, DB number, credentials, connect/read/write/dial timeouts, pool size
+- `WithLogger`, `WithName` options
+- `Client` interface — `Set`, `Get`, `Del`, `Exists`, `Expire`, `TTL`, `Scan`
+- `ErrNil` sentinel (aliases `redis.Nil`) for missing-key detection
+- Cursor-based `Scan` (safe for large key spaces; avoids `KEYS`)
+- Compile-time samsara interface assertion
+- Unit tests (no server required)
+- Integration tests (`//go:build integration`) against the existing Redis service
+
+---
+
+## rabbitmq/v0.1.1 — 2026-04-05
+
+Fix possible shutdown leaks.
+
+### Fixed
+- The dial goroutine may still succeed after we return. Drain the channel in a goroutine and close any connection it produces so we don't leak an open TCP connection to the broker.
+
+---
+
 ## fiber/v0.1.0 — 2026-04-05
 
 Initial release of the Fiber HTTP server component.

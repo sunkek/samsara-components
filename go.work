@@ -4,4 +4,6 @@ use (
     ./fiber
     ./postgresql
     ./rabbitmq
+    ./redis
+    ./s3
 )

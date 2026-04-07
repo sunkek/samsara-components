@@ -35,7 +35,22 @@ samsara-components/
 │   ├── helpers.go           # RealIP, ExcludeRoutes, Route, SkipperFunc
 │   ├── fiber_test.go              # unit tests (no server binding required)
 │   └── fiber_integration_test.go  # integration tests (//go:build integration)
-├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ)
+├── redis/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/redis
+│   ├── redis.go             # component lifecycle (Start, Stop, Health)
+│   ├── client.go            # Client interface, Set/Get/Del/Scan/… operations
+│   ├── redis_test.go              # unit tests (no server required)
+│   └── redis_integration_test.go  # integration tests (//go:build integration)
+├── s3/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/s3
+│   ├── s3.go                # component lifecycle (Start, Stop, Health)
+│   ├── operations.go        # Upload/Download/Delete/ListKeys/Presign operations
+│   ├── internal.go          # credential provider, HTTP error classification
+│   ├── s3_test.go              # unit tests (no S3 endpoint required)
+│   └── s3_integration_test.go  # integration tests (//go:build integration)
+├── scripts/
+│   └── localstack-init.sh   # creates the 'test' S3 bucket on LocalStack startup
+├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ, LocalStack)
 └── Makefile
 ```
 

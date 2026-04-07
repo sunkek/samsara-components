@@ -16,8 +16,8 @@ Each component is an independent Go module. Import only what you need.
 | [`fiber`](./fiber) | `github.com/sunkek/samsara-components/fiber` | Fiber HTTP server |
 | [`postgresql`](./postgresql) | `github.com/sunkek/samsara-components/postgresql` | PostgreSQL connection pool via pgx/v5 |
 | [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
-| `redis` _(planned)_ | `github.com/sunkek/samsara-components/redis` | Redis client |
-| `s3` _(planned)_ | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
+| [`redis`](./redis) | `github.com/sunkek/samsara-components/redis` | Redis client |
+| [`s3`](./s3) | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
 
 ---
 
@@ -33,13 +33,6 @@ import (
 
 func main() {
     sup := samsara.NewSupervisor()
-
-    rest := fiber.New(fiber.Config{
-        Host:       "0.0.0.0",
-        Port:       8080,
-        PathPrefix: "/api/v1",
-    })
-    sup.Add(rest, samsara.WithTier(samsara.TierCritical))
 
     db := postgresql.New(postgresql.Config{
         Host: "localhost",
@@ -58,6 +51,33 @@ func main() {
         Pass: "secret",
     })
     sup.Add(mq, samsara.WithTier(samsara.TierCritical))
+
+    cache := redis.New(redis.Config{
+        Host: "localhost",
+        Port: 6379,
+    })
+    sup.Add(cache,
+        samsara.WithTier(samsara.TierCritical),
+        samsara.WithRestartPolicy(samsara.ExponentialBackoff(5, time.Second)),
+    )
+
+    store := s3.New(s3.Config{
+        Endpoint: "https://s3.us-east-1.amazonaws.com",
+        Region:   "us-east-1",
+        KeyID:    os.Getenv("S3_KEY_ID"),
+        Secret:   os.Getenv("S3_SECRET"),
+    })
+    sup.Add(store,
+        samsara.WithTier(samsara.TierSignificant),
+        samsara.WithRestartPolicy(samsara.AlwaysRestart(5*time.Second)),
+    )
+
+    rest := fiber.New(fiber.Config{
+        Host:       "0.0.0.0",
+        Port:       8080,
+        PathPrefix: "/api/v1",
+    })
+    sup.Add(rest, samsara.WithTier(samsara.TierCritical))
 
     app := samsara.NewApplication(samsara.WithSupervisor(sup))
     if err := app.Run(); err != nil {
@@ -95,7 +115,7 @@ make test-all       # unit + integration (requires Docker)
 | `make check` | Vet + lint + unit tests — run before pushing |
 | `make test-race` | Unit tests with race detector, count=3 |
 | `make coverage` | Unit tests with per-module coverage summary |
-| `make infra-up` | Start Postgres, Redis, RabbitMQ via Docker Compose |
+| `make infra-up` | Start Postgres, Redis, RabbitMQ, LocalStack via Docker Compose |
 | `make test-integration` | Start infra, run integration tests, stop infra |
 | `make tidy` | `go mod tidy` across all modules |
 

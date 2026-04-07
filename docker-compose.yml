@@ -43,3 +43,62 @@ services:
       interval: 5s
       timeout: 10s
       retries: 10
+
+  # SeaweedFS provides S3-compatible storage for integration tests.
+  # Apache 2.0 licensed; no account or license key required.
+  #
+  # The `server -s3` command starts master, volume, filer, and S3 gateway in a
+  # single process. The s3.json config supplies fixed test credentials.
+  # Path-style addressing (bucket in URL path) is the default for local servers.
+  #
+  # S3 endpoint : http://localhost:8333
+  # Master      : localhost:9333  (internal; not exposed outside compose)
+  # Access key  : test
+  # Secret key  : test
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    ports:
+      - "127.0.0.1:8333:8333"   # S3 API
+    volumes:
+      - ./scripts/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+    # -s3.config mounts credentials; -dir keeps data in a tmpfs-backed path.
+    # The entrypoint wrapper creates the data directory before exec-ing weed,
+    # because SeaweedFS will not create it itself and exits 255 if absent.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /tmp/seaweedfs
+        exec weed server \
+          -s3 \
+          -s3.config=/etc/seaweedfs/s3.json \
+          -s3.port=8333 \
+          -dir=/tmp/seaweedfs \
+          -master.volumeSizeLimitMB=128
+    healthcheck:
+      # The master exposes a real /cluster/healthz endpoint on port 9333 that
+      # returns HTTP 200 once the cluster is ready. The S3 port (8333) has no
+      # equivalent — /healthz is misrouted as a bucket name and returns 404.
+      # Checking the master is sufficient: the S3 gateway won't serve requests
+      # before the master is healthy anyway.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9333/cluster/healthz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # One-shot container that creates the 'test' bucket once SeaweedFS is healthy.
+  # Uses the same image (weed shell is available inside it).
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:latest
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    # weed shell connects to the master and creates the bucket.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo 's3.bucket.create -name test' | weed shell -master=seaweedfs:9333
+        echo "seaweedfs-init: bucket 'test' ready"
+    restart: "no"
