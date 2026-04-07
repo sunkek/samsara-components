@@ -68,6 +68,7 @@ coverage:
 .PHONY: infra-up
 infra-up:
 	docker compose up -d --wait
+	docker compose --profile init run -d --rm seaweedfs-init
 	@echo "✓ infrastructure ready"
 
 .PHONY: infra-down

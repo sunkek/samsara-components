@@ -91,6 +91,7 @@ services:
   # Uses the same image (weed shell is available inside it).
   seaweedfs-init:
     image: chrislusf/seaweedfs:latest
+    profiles: ["init"]
     depends_on:
       seaweedfs:
         condition: service_healthy
