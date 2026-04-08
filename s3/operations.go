@@ -62,13 +62,23 @@ func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
 	}
 
 	contentType := r.ContentType
-	body := r.Body
+	var body io.ReadSeeker
 	if contentType == "" {
 		var err error
-		contentType, body, err = detectContentType(r.Key, body)
+		var br *bytes.Reader
+		contentType, br, err = detectContentType(r.Key, r.Body)
 		if err != nil {
 			return fmt.Errorf("s3 upload: content-type detection: %w", err)
 		}
+		body = br
+	} else {
+		// Even when ContentType is provided we need a seekable body for the
+		// AWS SDK v2 checksum calculation over plain HTTP. Buffer it.
+		all, err := io.ReadAll(r.Body)
+		if err != nil {
+			return fmt.Errorf("s3 upload: read body: %w", err)
+		}
+		body = bytes.NewReader(all)
 	}
 
 	acl := r.ACL
@@ -187,7 +197,8 @@ func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]stri
 				keys = append(keys, *obj.Key)
 			}
 		}
-		if !*out.IsTruncated {
+		// IsTruncated is *bool; guard against nil from non-conformant servers.
+		if out.IsTruncated == nil || !*out.IsTruncated {
 			break
 		}
 		continuationToken = out.NextContinuationToken
@@ -241,27 +252,34 @@ func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string
 	return resp.URL, nil
 }
 
-// detectContentType sniffs the MIME type from the first 512 bytes of body.
-// It returns the detected type and a reassembled reader that starts from
-// the beginning of the original content.
-// SVG files are detected by extension or content inspection.
-func detectContentType(key string, body io.Reader) (string, io.Reader, error) {
-	buf := make([]byte, 512)
-	n, err := body.Read(buf)
-	if err != nil && err != io.EOF {
+// detectContentType sniffs the MIME type from the first 512 bytes of body,
+// reads all remaining bytes, and returns the full content as a *bytes.Reader.
+//
+// Returning a *bytes.Reader (which implements io.ReadSeeker) is required by
+// AWS SDK v2: over plain HTTP the SDK must compute the payload checksum
+// upfront, which requires a seekable stream. An io.MultiReader is not
+// seekable and causes "unseekable stream is not supported without TLS".
+//
+// SVG files are detected by extension or content prefix.
+func detectContentType(key string, body io.Reader) (string, *bytes.Reader, error) {
+	all, err := io.ReadAll(body)
+	if err != nil {
 		return "", nil, err
 	}
 
-	contentType := http.DetectContentType(buf[:n])
+	sniff := all
+	if len(sniff) > 512 {
+		sniff = sniff[:512]
+	}
+	contentType := http.DetectContentType(sniff)
 
 	// http.DetectContentType cannot detect SVG; handle it explicitly.
 	if strings.HasSuffix(strings.ToLower(key), ".svg") ||
-		bytes.Contains(bytes.ToLower(buf[:n]), []byte("<svg")) {
+		bytes.Contains(bytes.ToLower(sniff), []byte("<svg")) {
 		contentType = "image/svg+xml"
 	}
 
-	// Reassemble the full reader from the sniffed prefix + remaining bytes.
-	return contentType, io.MultiReader(bytes.NewReader(buf[:n]), body), nil
+	return contentType, bytes.NewReader(all), nil
 }
 
 // ptrOf returns a pointer to v.
