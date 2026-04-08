@@ -12,6 +12,30 @@ across all of them.
 
 ---
 
+## s3/v0.1.2 — 2026-04-08
+
+### Fixed
+- `Upload` now buffers the request body into a `*bytes.Reader` before calling
+  `PutObject`, providing the seekable stream required by AWS SDK v2 to compute
+  the payload checksum over plain HTTP. Previously, `detectContentType` returned
+  an `io.MultiReader` (not seekable), causing all uploads to fail with
+  "unseekable stream is not supported without TLS and trailing checksum".
+- `ListKeys` no longer panics when `ListObjectsV2` returns a nil `IsTruncated`
+  pointer. AWS always populates this field, but non-conformant S3-compatible
+  servers (such as SeaweedFS) may omit it.
+
+### Changed
+- Integration tests now run against [SeaweedFS](https://github.com/seaweedfs/seaweedfs)
+  (Apache 2.0) instead of LocalStack. LocalStack requires a license key as of
+  late 2024; SeaweedFS is fully free, needs no account, and provides equivalent
+  S3 API coverage for the operations this component uses.
+- `docker-compose.yml`: replaced `localstack` service with `seaweedfs` (single-node
+  `server -s3` mode) and `seaweedfs-init` (one-shot bucket creation via `weed shell`).
+- `scripts/localstack-init.sh` replaced by `scripts/seaweedfs-s3.json` (static
+  credentials config mounted into the SeaweedFS container).
+
+---
+
 ## s3/v0.1.0 — 2026-04-06
 
 Initial release of the S3 component.
