@@ -12,6 +12,33 @@ across all of them.
 
 ---
 
+## grpc/v0.1.0 — 2026-04-08
+
+### Added
+- `Component` — samsara-compatible gRPC server backed by google.golang.org/grpc v1.71
+- `Config` — host, port, message size limits, keepalive parameters, `EnableReflection`
+- `WithLogger`, `WithName` options
+- `Register(RegisterFunc)` — callback-based service registration; receives `*grpc.Server`
+  directly so callers use the native generated `pb.RegisterXxxServer(s, impl)` API
+- `AddOption(grpc.ServerOption)` — inject unary/stream interceptors and other server
+  options before Start; mirrors Fiber's `Use()` for middleware
+- Built-in gRPC health service (`grpc/health/grpc_health_v1`) — always registered;
+  enables Kubernetes liveness/readiness probes and `grpc-health-probe` with no caller
+  configuration required
+- `EnableReflection` config flag — opt-in reflection service for `grpcurl` and similar
+  introspection tools; defaults to false (production-safe)
+- Keepalive policy with production-safe defaults: 2 min server ping interval, 20 s ping
+  timeout, 5 min max connection idle, enforcement policy preventing overly aggressive
+  client pings
+- `GracefulStop` with hard-stop fallback when the context deadline is exceeded during
+  shutdown, preventing the supervisor from hanging
+- Compile-time samsara interface assertion (no samsara import required)
+- Unit tests (no server binding or external infra required)
+- Integration tests (`//go:build integration`) using ephemeral ports; fully self-contained,
+  no Docker services needed
+
+---
+
 ## s3/v0.1.2 — 2026-04-08
 
 ### Fixed

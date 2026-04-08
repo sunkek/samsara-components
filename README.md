@@ -14,6 +14,7 @@ Each component is an independent Go module. Import only what you need.
 | Module | Import path | Description |
 |--------|-------------|-------------|
 | [`fiber`](./fiber) | `github.com/sunkek/samsara-components/fiber` | Fiber HTTP server |
+| [`grpc`](./grpc) | `github.com/sunkek/samsara-components/grpc` | gRPC server with health, reflection, and interceptor support |
 | [`postgresql`](./postgresql) | `github.com/sunkek/samsara-components/postgresql` | PostgreSQL connection pool via pgx/v5 |
 | [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
 | [`redis`](./redis) | `github.com/sunkek/samsara-components/redis` | Redis client |
@@ -27,8 +28,10 @@ Each component is an independent Go module. Import only what you need.
 import (
     "github.com/sunkek/samsara"
     "github.com/sunkek/samsara-components/fiber"
+    "github.com/sunkek/samsara-components/grpc"
     "github.com/sunkek/samsara-components/postgresql"
     "github.com/sunkek/samsara-components/rabbitmq"
+    grpclib "google.golang.org/grpc"
 )
 
 func main() {
@@ -78,6 +81,15 @@ func main() {
         PathPrefix: "/api/v1",
     })
     sup.Add(rest, samsara.WithTier(samsara.TierCritical))
+
+    rpc := grpc.New(grpc.Config{
+        Host: "0.0.0.0",
+        Port: 9090,
+    })
+    rpc.Register(func(s *grpclib.Server) {
+        pb.RegisterMyServiceServer(s, &myServiceImpl{db: db})
+    })
+    sup.Add(rpc, samsara.WithTier(samsara.TierCritical))
 
     app := samsara.NewApplication(samsara.WithSupervisor(sup))
     if err := app.Run(); err != nil {
