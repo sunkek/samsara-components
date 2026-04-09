@@ -3,10 +3,9 @@ package fiber
 // Register adds a [RegisterFunc] that will be called during [Component.Start]
 // with the root [gf.Router] scoped to [Config.PathPrefix].
 //
-// It is safe to call Register before or after Start. If the component is
-// already running, the RegisterFunc is applied immediately on the live app —
-// Fiber supports hot route registration. On the next restart all registered
-// funcs are re-applied in order.
+// Register must be called before [samsara.Application.Run]. All registered
+// funcs are applied in registration order when Start builds the Fiber app.
+// On each restart they are re-applied automatically.
 //
 // Example:
 //
@@ -22,16 +21,6 @@ func (c *Component) Register(fn RegisterFunc) {
 	c.routesMu.Lock()
 	c.routes = append(c.routes, fn)
 	c.routesMu.Unlock()
-
-	// If Start has already been called, apply immediately on the live app.
-	c.mu.RLock()
-	app := c.app
-	c.mu.RUnlock()
-
-	if app != nil {
-		root := app.Group(c.cfg.pathPrefix())
-		fn(root)
-	}
 }
 
 // Use adds global middleware that is applied to all domain routes after the

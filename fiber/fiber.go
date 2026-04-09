@@ -226,6 +226,12 @@ func WithName(name string) Option {
 	return func(c *Component) { c.name = name }
 }
 
+// healthClient is used by [Component.Health] to probe the built-in /health
+// endpoint. A dedicated client with a fixed timeout avoids inheriting
+// http.DefaultClient's no-timeout default, which would block Health
+// indefinitely if the server is wedged and the caller passes context.Background.
+var healthClient = &http.Client{Timeout: 5 * time.Second}
+
 // Compile-time assertion: *Component satisfies the samsara component and
 // health-checker interfaces without importing the samsara package.
 var (
@@ -343,6 +349,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 
 	c.mu.Lock()
 	c.listening = false
+	c.app = nil // clear so Stop on a finished app is a no-op
 	c.mu.Unlock()
 
 	return nil
@@ -380,7 +387,7 @@ func (c *Component) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("fiber: health probe: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := healthClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("fiber: health probe: %w", err)
 	}
