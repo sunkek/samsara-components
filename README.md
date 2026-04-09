@@ -15,6 +15,7 @@ Each component is an independent Go module. Import only what you need.
 |--------|-------------|-------------|
 | [`fiber`](./fiber) | `github.com/sunkek/samsara-components/fiber` | Fiber HTTP server |
 | [`grpc`](./grpc) | `github.com/sunkek/samsara-components/grpc` | gRPC server with health, reflection, and interceptor support |
+| [`grpcclient`](./grpcclient) | `github.com/sunkek/samsara-components/grpcclient` | gRPC client with lifecycle management and interceptor support |
 | [`postgresql`](./postgresql) | `github.com/sunkek/samsara-components/postgresql` | PostgreSQL connection pool via pgx/v5 |
 | [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
 | [`redis`](./redis) | `github.com/sunkek/samsara-components/redis` | Redis client |
@@ -29,6 +30,7 @@ import (
     "github.com/sunkek/samsara"
     "github.com/sunkek/samsara-components/fiber"
     "github.com/sunkek/samsara-components/grpc"
+    "github.com/sunkek/samsara-components/grpcclient"
     "github.com/sunkek/samsara-components/postgresql"
     "github.com/sunkek/samsara-components/rabbitmq"
     grpclib "google.golang.org/grpc"
@@ -91,6 +93,16 @@ func main() {
     })
     sup.Add(rpc, samsara.WithTier(samsara.TierCritical))
 
+    upstream := grpcclient.New(grpcclient.Config{
+        Target: "other-service:9090",
+    }, grpcclient.WithName("other-service-client"))
+    sup.Add(upstream,
+        samsara.WithTier(samsara.TierCritical),
+        samsara.WithDependencies("postgres"),
+    )
+    otherClient := pb.NewOtherServiceClient(upstream.Conn())
+    _ = otherClient // pass to adapters that need it
+
     app := samsara.NewApplication(samsara.WithSupervisor(sup))
     if err := app.Run(); err != nil {
         log.Fatal(err)
@@ -127,7 +139,7 @@ make test-all       # unit + integration (requires Docker)
 | `make check` | Vet + lint + unit tests — run before pushing |
 | `make test-race` | Unit tests with race detector, count=3 |
 | `make coverage` | Unit tests with per-module coverage summary |
-| `make infra-up` | Start Postgres, Redis, RabbitMQ, LocalStack via Docker Compose |
+| `make infra-up` | Start Postgres, Redis, RabbitMQ, SeaweedFS via Docker Compose (not needed for grpc/grpcclient) |
 | `make test-integration` | Start infra, run integration tests, stop infra |
 | `make tidy` | `go mod tidy` across all modules |
 

@@ -12,6 +12,29 @@ across all of them.
 
 ---
 
+## grpcclient/v0.1.0 — 2026-04-08
+
+### Added
+- `Component` — samsara-compatible gRPC client backed by google.golang.org/grpc v1.71
+- `Config` — target address, connect timeout, message size limits, keepalive parameters
+- `WithLogger`, `WithName` options
+- `AddOption(grpc.DialOption)` — inject unary/stream interceptors and other dial options
+  before Start; mirrors the server component's `AddOption(grpc.ServerOption)`
+- `Conn()` — exposes `*grpc.ClientConn` for passing directly to generated stub constructors
+- Proactive connection: calls `conn.Connect()` then waits for `READY` state within
+  `ConnectTimeout` before calling `ready()` — same fast-fail semantics as other components
+- `Health` checks connectivity state: `READY` and `IDLE` are healthy; `CONNECTING`,
+  `TRANSIENT_FAILURE`, and `SHUTDOWN` return errors; `IDLE` is explicitly healthy because
+  gRPC re-enters it after inactivity and reconnects automatically on the next RPC
+- `conn.Close()` in `Stop` with context-deadline-aware timeout logging
+- `Conn()` set to nil after `Stop` so `Health` correctly reports uninitialised state
+- Compile-time samsara interface assertion (no samsara import required)
+- Unit tests (no server or external infra required)
+- Integration tests (`//go:build integration`) with in-process gRPC servers on ephemeral
+  ports; fully self-contained, no Docker services needed
+
+---
+
 ## grpc/v0.1.0 — 2026-04-08
 
 ### Added
