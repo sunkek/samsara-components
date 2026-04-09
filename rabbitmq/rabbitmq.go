@@ -143,11 +143,13 @@ type Component struct {
 	log  Logger
 	name string
 
-	// mu guards conn, ch, and stopCh across the Start/Stop/restart lifecycle.
-	mu     sync.RWMutex
-	conn   *amqp.Connection
-	ch     *amqp.Channel
-	stopCh chan struct{}
+	// mu guards conn, ch, stopCh, and runCtx across the Start/Stop/restart lifecycle.
+	mu        sync.RWMutex
+	conn      *amqp.Connection
+	ch        *amqp.Channel
+	stopCh    chan struct{}
+	runCtx    context.Context    // ctx of the current Start call; nil when stopped
+	runCancel context.CancelFunc // cancels runCtx on Stop
 
 	// exchMu guards exchanges, which are registered before Start and read
 	// during Start (re-declaration on restart). Separate from mu to avoid
@@ -213,10 +215,17 @@ func (c *Component) Name() string { return c.name }
 //
 // Start is safe to call multiple times across restarts.
 func (c *Component) Start(ctx context.Context, ready func()) error {
-	// Allocate a fresh stopCh for this run under the write lock.
+	// Allocate a fresh stopCh and a cancellable run context for this run.
+	// runCtx is stored so that post-start Subscribe calls can pass the correct
+	// lifecycle context to consumer goroutines, preventing goroutine leaks on
+	// Stop/restart cycles.
+	runCtx, runCancel := context.WithCancel(ctx)
+
 	c.mu.Lock()
 	c.stopCh = make(chan struct{})
 	stopCh := c.stopCh
+	c.runCtx = runCtx
+	c.runCancel = runCancel
 	c.mu.Unlock()
 
 	// amqp.DialConfig has no context support, so we race it against ctx and
@@ -312,6 +321,16 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	case <-stopCh:
 	case <-ctx.Done():
 	}
+
+	// Ensure the run context is cancelled so any consumer goroutines that were
+	// started during this run (including post-start Subscribe calls) exit cleanly.
+	runCancel()
+
+	c.mu.Lock()
+	c.runCtx = nil
+	c.runCancel = nil
+	c.mu.Unlock()
+
 	return nil
 }
 
@@ -325,7 +344,16 @@ func (c *Component) Stop(ctx context.Context) error {
 	c.stopCh = closed
 	conn := c.conn
 	channel := c.ch
+	runCancel := c.runCancel
 	c.mu.Unlock()
+
+	// Cancel the run context first so that all consumer goroutines — including
+	// any started via post-Start Subscribe calls — exit before we close the
+	// underlying connection. Without this, a goroutine reading from a delivery
+	// channel could race with conn.Close().
+	if runCancel != nil {
+		runCancel()
+	}
 
 	// Signal the running Start goroutine to exit.
 	select {

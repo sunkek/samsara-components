@@ -77,17 +77,24 @@ func (c *Component) SubscribeWithKey(exchange, queue, routingKey string, handler
 	c.subs = append(c.subs, sub)
 	c.subsMu.Unlock()
 
-	// If the component is already running, bind immediately.
+	// If the component is already running, bind immediately using the current
+	// run's context so the consumer goroutine exits when Stop is called.
+	// Holding the read lock only long enough to read both ch and runCtx keeps
+	// the critical section short.
 	c.mu.RLock()
 	ch := c.ch
+	runCtx := c.runCtx
 	c.mu.RUnlock()
 
 	if ch == nil || ch.IsClosed() {
 		return nil // not running yet — will be bound on next Start
 	}
-
-	ctx := context.Background() // live bind; caller has no lifecycle context here
-	return c.bindAndConsume(ctx, ch, sub)
+	if runCtx == nil {
+		// Component was stopped between the IsClosed check and here; the next
+		// Start will re-bind this subscription from the slice.
+		return nil
+	}
+	return c.bindAndConsume(runCtx, ch, sub)
 }
 
 // Publish sends a message to the given exchange with the given routing key.
