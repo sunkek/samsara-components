@@ -33,6 +33,8 @@ import (
     "github.com/sunkek/samsara-components/grpcclient"
     "github.com/sunkek/samsara-components/postgresql"
     "github.com/sunkek/samsara-components/rabbitmq"
+    "github.com/sunkek/samsara-components/redis"
+    "github.com/sunkek/samsara-components/s3"
     grpclib "google.golang.org/grpc"
 )
 
@@ -139,7 +141,7 @@ make test-all       # unit + integration (requires Docker)
 | `make check` | Vet + lint + unit tests — run before pushing |
 | `make test-race` | Unit tests with race detector, count=3 |
 | `make coverage` | Unit tests with per-module coverage summary |
-| `make infra-up` | Start Postgres, Redis, RabbitMQ, SeaweedFS via Docker Compose (not needed for grpc/grpcclient) |
+| `make infra-up` | Start Postgres, Redis, RabbitMQ, SeaweedFS via Docker Compose (not needed for `grpc` or `grpcclient`) |
 | `make test-integration` | Start infra, run integration tests, stop infra |
 | `make tidy` | `go mod tidy` across all modules |
 

@@ -14,6 +14,27 @@ independent module in its own subdirectory:
 ```
 samsara-components/
 ├── go.work                  # workspace — ties all modules together locally
+├── fiber/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/fiber
+│   ├── fiber.go             # component lifecycle (Start, Stop, Health)
+│   ├── routes.go            # Register / Use API
+│   ├── errors.go            # DefaultErrorHandler, ErrorResponse, HTTPStatuser
+│   ├── swagger.go           # WithSwagger option
+│   ├── helpers.go           # RealIP, ExcludeRoutes, Route, SkipperFunc
+│   ├── fiber_test.go              # unit tests (no server binding required)
+│   └── fiber_integration_test.go  # integration tests (//go:build integration)
+├── grpc/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/grpc
+│   ├── grpc.go              # component lifecycle (Start, Stop, Health)
+│   ├── config.go            # Config and keepalive helpers
+│   ├── grpc_test.go              # unit tests (no server binding required)
+│   └── grpc_integration_test.go  # integration tests (//go:build integration)
+├── grpcclient/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/grpcclient
+│   ├── grpcclient.go        # component lifecycle (Start, Stop, Health), Conn()
+│   ├── config.go            # Config and dial option helpers
+│   ├── grpcclient_test.go              # unit tests (no server required)
+│   └── grpcclient_integration_test.go  # integration tests (//go:build integration)
 ├── postgresql/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/postgresql
 │   ├── postgresql.go        # component lifecycle (Start, Stop, Health)
@@ -26,15 +47,6 @@ samsara-components/
 │   ├── messaging.go         # publish/subscribe API
 │   ├── rabbitmq_test.go              # unit tests (no broker required)
 │   └── rabbitmq_integration_test.go  # integration tests (//go:build integration)
-├── fiber/
-│   ├── go.mod               # module: github.com/sunkek/samsara-components/fiber
-│   ├── fiber.go             # component lifecycle, config, options
-│   ├── routes.go            # Register / Use API
-│   ├── errors.go            # DefaultErrorHandler, ErrorResponse, HTTPStatuser
-│   ├── swagger.go           # WithSwagger option
-│   ├── helpers.go           # RealIP, ExcludeRoutes, Route, SkipperFunc
-│   ├── fiber_test.go              # unit tests (no server binding required)
-│   └── fiber_integration_test.go  # integration tests (//go:build integration)
 ├── redis/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/redis
 │   ├── redis.go             # component lifecycle (Start, Stop, Health)
@@ -49,8 +61,8 @@ samsara-components/
 │   ├── s3_test.go              # unit tests (no S3 endpoint required)
 │   └── s3_integration_test.go  # integration tests (//go:build integration)
 ├── scripts/
-│   └── localstack-init.sh   # creates the 'test' S3 bucket on LocalStack startup
-├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ, LocalStack)
+│   └── seaweedfs-s3.json    # static credentials config for SeaweedFS integration tests
+├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ, SeaweedFS)
 └── Makefile
 ```
 
@@ -110,7 +122,9 @@ The CI pipeline enforces both. PRs that fail CI will not be merged.
 2. Initialise a module: `cd redis && go mod init github.com/sunkek/samsara-components/redis`.
 3. Add the module to the workspace: `go work use ./redis` (from the repo root).
 4. Implement `Name() string`, `Start(ctx, ready)`, `Stop(ctx)` — satisfying
-   the samsara component contract.
+   the samsara component contract. All public registration APIs (route
+   registration, exchange declarations, subscriptions) must be called before
+   `Start`; the component re-applies them on each restart from stored slices.
 5. Implement `Health(ctx) error` if the component can be health-checked.
 6. Add a compile-time assertion (see `postgresql/postgresql.go` for the pattern).
 7. Add unit tests (no infrastructure required) and integration tests
