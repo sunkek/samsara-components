@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	grpclib "google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -236,23 +237,62 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 
 	c.log.Info("grpc: listening", "addr", c.cfg.addr())
 
+	// Watch ctx so a samsara context cancellation triggers a graceful stop
+	// even when Stop is not called explicitly (e.g. supervisor timeout path).
+	//
+	// We close stopCh here rather than calling GracefulStop directly.
+	// Stop() is the sole issuer of GracefulStop — having two goroutines call
+	// it concurrently is safe per the gRPC spec but causes serving=false to
+	// race between the two paths, making the Serve() error ambiguous.
+	// Closing stopCh is idempotent (the select below guards against it) and
+	// wakes the terminal select at the bottom of Start, which returns nil so
+	// the supervisor can tear down cleanly.
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Replicate what Stop() does: set serving=false and replace
+			// c.stopCh with a closed channel so Serve()'s error is treated
+			// as a clean exit, then issue GracefulStop to drain in-flight RPCs.
+			c.mu.Lock()
+			closed := make(chan struct{})
+			close(closed)
+			c.stopCh = closed
+			srv2 := c.server
+			c.serving = false
+			c.mu.Unlock()
+
+			// Wake the terminal select using the local stopCh this run
+			// captured — same channel that c.stopCh pointed to at Start time.
+			select {
+			case <-stopCh:
+				// Already closed: Stop() raced and won — GracefulStop handled.
+			default:
+				close(stopCh)
+			}
+
+			if srv2 != nil {
+				done := make(chan struct{})
+				go func() {
+					srv2.GracefulStop()
+					close(done)
+				}()
+				select {
+				case <-done:
+				case <-time.After(10 * time.Second):
+					c.log.Error("grpc: ctx-cancel graceful stop timed out, forcing stop")
+					srv2.Stop()
+					<-done
+				}
+			}
+		case <-stopCh:
+			// Stop() already handled shutdown — nothing to do.
+		}
+	}()
+
 	// Port is bound and server is fully configured — signal the supervisor.
 	// This mirrors Fiber's OnListen hook: the port is open, all services are
 	// registered, ready to accept RPCs.
 	ready()
-
-	// Watch ctx so a samsara context cancellation triggers a graceful
-	// stop even if Stop is not called explicitly (e.g. supervisor timeout).
-	go func() {
-		<-ctx.Done()
-		// Mark serving=false before GracefulStop so that when Serve()
-		// returns its "closed network connection" error we treat it as a
-		// clean exit rather than a crash. This mirrors what Stop() does.
-		c.mu.Lock()
-		c.serving = false
-		c.mu.Unlock()
-		srv.GracefulStop()
-	}()
 
 	// Serve blocks until GracefulStop or Stop is called.
 	if err := srv.Serve(ln); err != nil {
@@ -265,12 +305,13 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 		serving := c.serving
 		c.mu.RUnlock()
 		if serving {
-			// serving is still true means Stop was not called — the error
-			// is unexpected. Return it so the supervisor can restart.
+			// serving is still true means neither Stop nor ctx cancellation
+			// fired — the error is unexpected. Return it so the supervisor
+			// can restart.
 			return fmt.Errorf("grpc: serve: %w", err)
 		}
-		// serving=false: Stop was called, GracefulStop closed the listener.
-		// Treat as clean exit.
+		// serving=false: shutdown was initiated, GracefulStop closed the
+		// listener. Treat as clean exit.
 	}
 
 	select {

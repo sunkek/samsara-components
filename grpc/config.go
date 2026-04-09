@@ -91,15 +91,26 @@ func (c Config) maxConnectionIdle() time.Duration {
 
 // keepaliveOptions builds the grpc.ServerOptions for message size limits and
 // keepalive policy. Called once per Start to ensure clean per-run config.
+//
+// All keepalive parameters are combined into a single KeepaliveParams call.
+// Passing two separate KeepaliveParams options causes the second struct to
+// overwrite the first: zero-valued fields in the second silently clear the
+// non-zero values set by the first (e.g. MaxConnectionAge > 0 would zero out
+// Time, Timeout, and MaxConnectionIdle).
 func (c Config) keepaliveOptions() []grpclib.ServerOption {
-	opts := []grpclib.ServerOption{
+	kp := keepalive.ServerParameters{
+		Time:              c.keepaliveTime(),
+		Timeout:           c.keepaliveTimeout(),
+		MaxConnectionIdle: c.maxConnectionIdle(),
+	}
+	if c.MaxConnectionAge > 0 {
+		kp.MaxConnectionAge = c.MaxConnectionAge
+		kp.MaxConnectionAgeGrace = 5 * time.Second
+	}
+	return []grpclib.ServerOption{
 		grpclib.MaxRecvMsgSize(c.maxRecvMsgSizeBytes()),
 		grpclib.MaxSendMsgSize(c.maxSendMsgSizeBytes()),
-		grpclib.KeepaliveParams(keepalive.ServerParameters{
-			Time:              c.keepaliveTime(),
-			Timeout:           c.keepaliveTimeout(),
-			MaxConnectionIdle: c.maxConnectionIdle(),
-		}),
+		grpclib.KeepaliveParams(kp),
 		// Enforce client keepalive policy to prevent poorly-behaved clients
 		// from sending pings too aggressively and starving real traffic.
 		grpclib.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
@@ -107,11 +118,4 @@ func (c Config) keepaliveOptions() []grpclib.ServerOption {
 			PermitWithoutStream: true,
 		}),
 	}
-	if c.MaxConnectionAge > 0 {
-		opts = append(opts, grpclib.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionAge:      c.MaxConnectionAge,
-			MaxConnectionAgeGrace: 5 * time.Second,
-		}))
-	}
-	return opts
 }
