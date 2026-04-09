@@ -251,6 +251,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	close(closed)
 	c.stopCh = closed
 	pool := c.pool
+	c.pool = nil // nil-clear so post-stop callers get "pool not initialised"
 	c.mu.Unlock()
 
 	// Signal the currently-running Start (if any) to exit.
