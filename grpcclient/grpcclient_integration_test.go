@@ -286,9 +286,13 @@ func TestIntegration_AddOption_Interceptor(t *testing.T) {
 	}
 }
 
-func TestIntegration_ServerStop_HealthDetectsFailure(t *testing.T) {
-	// When the server shuts down, Health should eventually return an error
-	// as the client detects the broken connection.
+func TestIntegration_Health_TransientFailure_AfterRPC(t *testing.T) {
+	// Health returns an error once the connection has entered TRANSIENT_FAILURE.
+	// The gRPC state machine only transitions to TRANSIENT_FAILURE when it
+	// actively tries to connect and fails — not merely because the server
+	// closed the TCP connection. We therefore trigger a failed RPC first,
+	// which forces the transport to attempt a reconnect and discover the
+	// server is gone, pushing the state to TRANSIENT_FAILURE.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -296,6 +300,7 @@ func TestIntegration_ServerStop_HealthDetectsFailure(t *testing.T) {
 	addr := ln.Addr().String()
 
 	srv := grpclib.NewServer()
+	healthpb.RegisterHealthServer(srv, &servingHealthImpl{})
 	go func() { _ = srv.Serve(ln) }()
 
 	comp := grpcclient.New(
@@ -308,10 +313,18 @@ func TestIntegration_ServerStop_HealthDetectsFailure(t *testing.T) {
 		t.Fatalf("Health before server stop: %v", err)
 	}
 
-	// Hard-stop the server so the client connection breaks immediately.
+	// Hard-stop the server.
 	srv.Stop()
 
-	// Poll Health until the client detects the failure.
+	// Fire an RPC against the now-dead server. This forces the transport
+	// to attempt a new connection and fail, pushing the state machine into
+	// TRANSIENT_FAILURE — at which point Health will return an error.
+	client := healthpb.NewHealthClient(comp.Conn())
+	rpcCtx, rpcCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer rpcCancel()
+	_, _ = client.Check(rpcCtx, &healthpb.HealthCheckRequest{}) // expected to fail
+
+	// Now Health must reflect the failed state.
 	deadline := time.After(5 * time.Second)
 	for {
 		if err := comp.Health(context.Background()); err != nil {
@@ -320,7 +333,8 @@ func TestIntegration_ServerStop_HealthDetectsFailure(t *testing.T) {
 		}
 		select {
 		case <-deadline:
-			t.Fatal("Health did not return error within deadline after server stopped")
+			t.Fatalf("Health did not return error within deadline; conn state: %s",
+				comp.Conn().GetState())
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
