@@ -258,11 +258,13 @@ func (c *Component) Health(ctx context.Context) error {
 // Any response (including 404/403) confirms the endpoint is reachable; only
 // a network error or credential-signing failure is treated as a failure.
 func verifyConnectivity(ctx context.Context, client *s3.Client) error {
-	// "_samsara-health-check" is intentionally not a real bucket name.
+	// "samsara-health-probe" is intentionally not a real bucket name.
 	// The response will be 404 NoSuchBucket or 403 AccessDenied — both prove
-	// the endpoint and signing chain are working.
+	// the endpoint and signing chain are working. The name is all-lowercase
+	// alphanumeric-and-hyphens, satisfying AWS S3 bucket naming rules so we
+	// get a 404/403 rather than a 400 InvalidBucketName on real AWS.
 	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: ptrOf("_samsara-health-check"),
+		Bucket: ptrOf("samsara-health-probe"),
 	})
 	if err == nil {
 		return nil // unexpectedly found; still healthy
