@@ -37,6 +37,16 @@ type PresignRequest struct {
 	// TTL overrides [Config.PresignTTL] for this request.
 	// Use 0 to use the component default.
 	TTL time.Duration
+	// ContentType signs an exact Content-Type header for presigned uploads.
+	// Leave empty to avoid constraining the upload MIME type at the S3 layer.
+	ContentType string
+	// ContentLength signs an exact Content-Length header for presigned uploads.
+	// Leave 0 to avoid constraining the upload size at the S3 layer.
+	//
+	// Presigned PUT URLs do not support a min/max size range such as
+	// x-amz-content-length-range. Use a presigned POST policy or validate
+	// size before issuing the URL if you need range-based enforcement.
+	ContentLength int64
 }
 
 // ACL is an S3 canned ACL value.
@@ -231,6 +241,10 @@ func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (stri
 
 // PresignUpload generates a time-limited presigned URL for uploading an object
 // via HTTP PUT. The URL is valid for [PresignRequest.TTL] or [Config.PresignTTL].
+//
+// If [PresignRequest.ContentType] or [PresignRequest.ContentLength] is set, the
+// client must send matching Content-Type / Content-Length headers when using the
+// returned URL or the upload will fail signature validation.
 func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string, error) {
 	if c.getPresigner() == nil {
 		return "", fmt.Errorf("s3 presign-upload: client not initialised")
@@ -242,10 +256,18 @@ func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string
 	if ttl == 0 {
 		ttl = c.cfg.presignTTL()
 	}
-	resp, err := c.getPresigner().PresignPutObject(ctx, &s3.PutObjectInput{
+	input := &s3.PutObjectInput{
 		Bucket: &r.Bucket,
 		Key:    &r.Key,
-	}, s3.WithPresignExpires(ttl))
+	}
+	if r.ContentType != "" {
+		input.ContentType = &r.ContentType
+	}
+	if r.ContentLength > 0 {
+		input.ContentLength = &r.ContentLength
+	}
+
+	resp, err := c.getPresigner().PresignPutObject(ctx, input, s3.WithPresignExpires(ttl))
 	if err != nil {
 		return "", fmt.Errorf("s3 presign-upload %q/%q: %w", r.Bucket, r.Key, err)
 	}

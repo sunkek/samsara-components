@@ -19,6 +19,7 @@ go.work.sum
 *.swp
 *.swo
 *~
+.codex
 
 # OS artifacts
 .DS_Store

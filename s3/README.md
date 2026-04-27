@@ -97,11 +97,16 @@ url, err := store.PresignDownload(ctx, s3.PresignRequest{
 
 // Presigned upload URL (client uploads directly to S3):
 url, err := store.PresignUpload(ctx, s3.PresignRequest{
-    Bucket: "my-bucket",
-    Key:    "uploads/user-avatar.png",
-    TTL:    15 * time.Minute,
+    Bucket:        "my-bucket",
+    Key:           "uploads/user-avatar.png",
+    TTL:           15 * time.Minute,
+    ContentType:   "image/png",
+    ContentLength: 5 * 1024 * 1024,
 })
 ```
+
+When `ContentType` or `ContentLength` is set, the uploader must send matching
+`Content-Type` and `Content-Length` headers with the PUT request.
 
 ---
 
@@ -141,7 +146,7 @@ s3.WithName("media-store")       // override component name
 | `DeleteByPrefix(ctx, bucket, prefix)` | Remove all objects under prefix; returns count |
 | `ListKeys(ctx, bucket, prefix)` | List all object keys under prefix |
 | `PresignDownload(ctx, PresignRequest)` | Generate a time-limited GET URL |
-| `PresignUpload(ctx, PresignRequest)` | Generate a time-limited PUT URL |
+| `PresignUpload(ctx, PresignRequest)` | Generate a time-limited PUT URL; can sign exact `Content-Type` and `Content-Length` |
 
 ### ACL constants
 
@@ -171,6 +176,13 @@ store.Upload(ctx, s3.UploadRequest{
     ...
 })
 ```
+
+## Presigned upload constraints
+
+`PresignUpload` can sign exact `Content-Type` and `Content-Length` values for
+PUT uploads. It cannot express a size range like `x-amz-content-length-range`;
+that requires a presigned POST policy or validation in the caller before the
+URL is returned.
 
 ---
 

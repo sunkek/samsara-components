@@ -12,6 +12,15 @@ across all of them.
 
 ---
 
+## s3/v0.1.4 — 2026-04-27
+
+### Added
+
+**s3**
+- `PresignRequest` now exposes `ContentType` and `ContentLength`, letting `PresignUpload` sign exact headers for constrained PUT uploads; the README and new integration test document the requirement that client requests send the same `Content-Type`/`Content-Length` values.
+
+---
+
 ## grpc/v0.1.1, grpcclient/v0.1.1, fiber/v0.1.2, rabbitmq/v0.1.3, postgresql/v0.1.2, s3/v0.1.4 — 2026-04-09
 
 ### Fixed

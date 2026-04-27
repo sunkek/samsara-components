@@ -118,6 +118,21 @@ func TestPresignRequest_ZeroTTL_UsesDefault(t *testing.T) {
 	}
 }
 
+func TestPresignRequest_UploadConstraints(t *testing.T) {
+	r := s3.PresignRequest{
+		Bucket:        "b",
+		Key:           "k",
+		ContentType:   "image/png",
+		ContentLength: 5 * 1024 * 1024,
+	}
+	if r.ContentType != "image/png" {
+		t.Fatalf("expected content type to round-trip, got %q", r.ContentType)
+	}
+	if r.ContentLength != 5*1024*1024 {
+		t.Fatalf("expected content length to round-trip, got %d", r.ContentLength)
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------

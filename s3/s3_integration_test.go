@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -322,6 +323,58 @@ func TestIntegration_PresignUpload(t *testing.T) {
 		t.Fatal("expected non-empty presigned URL")
 	}
 	t.Logf("presigned upload URL: %s", url[:min(80, len(url))])
+}
+
+func TestIntegration_PresignUpload_ContentTypeAndLength(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+
+	key := uniqueKey(t, "presign-ul-constrained.txt")
+	body := []byte("hello world")
+	t.Cleanup(func() { _ = comp.Delete(context.Background(), testBucket, key) })
+
+	url, err := comp.PresignUpload(ctx, s3.PresignRequest{
+		Bucket:        testBucket,
+		Key:           key,
+		TTL:           time.Minute,
+		ContentType:   "text/plain",
+		ContentLength: int64(len(body)),
+	})
+	if err != nil {
+		t.Fatalf("PresignUpload: %v", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	req.ContentLength = int64(len(body))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("presigned PUT: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("presigned PUT status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+
+	rc, err := comp.Download(ctx, testBucket, key)
+	if err != nil {
+		t.Fatalf("Download after presigned PUT: %v", err)
+	}
+	defer rc.Close()
+
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("ReadAll after presigned PUT: %v", err)
+	}
+	if !bytes.Equal(got, body) {
+		t.Fatalf("expected %q, got %q", body, got)
+	}
 }
 
 func min(a, b int) int {
