@@ -345,6 +345,8 @@ func (c *Component) Stop(ctx context.Context) error {
 	conn := c.conn
 	channel := c.ch
 	runCancel := c.runCancel
+	c.conn = nil
+	c.ch = nil
 	c.mu.Unlock()
 
 	// Cancel the run context first so that all consumer goroutines — including
