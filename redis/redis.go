@@ -213,6 +213,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	close(closed)
 	c.stopCh = closed
 	client := c.client
+	c.client = nil
 	c.mu.Unlock()
 
 	// Signal the running Start goroutine to exit.
