@@ -12,6 +12,20 @@ across all of them.
 
 ---
 
+## s3/v0.1.5 — 2026-05-20
+
+### Fixed
+
+**s3**
+- `Stop`: `c.client` and `c.presigner` are now cleared to nil under the write
+  lock. Post-stop calls to `Upload`, `Download`, `Delete`, `DeleteByPrefix`,
+  `ListKeys`, `PresignDownload`, or `PresignUpload` now return "client not
+  initialised" instead of using a stale SDK client. Each operation also
+  snapshots `getClient`/`getPresigner` into a local so the nil check and the
+  call cannot race against `Stop` nulling the field between them.
+
+---
+
 ## s3/v0.1.4 — 2026-04-27
 
 ### Added
@@ -21,7 +35,7 @@ across all of them.
 
 ---
 
-## grpc/v0.1.1, grpcclient/v0.1.1, fiber/v0.1.2, rabbitmq/v0.1.3, postgresql/v0.1.2, s3/v0.1.4 — 2026-04-09
+## grpc/v0.1.1, grpcclient/v0.1.1, fiber/v0.1.2, rabbitmq/v0.1.3, redis/v0.1.1, postgresql/v0.1.2, s3/v0.1.4 — 2026-05-20
 
 ### Fixed
 
@@ -49,6 +63,13 @@ across all of them.
 - `Health`: replaced `http.DefaultClient` (no timeout) with a package-level
   `healthClient` with a 5 s timeout, preventing indefinite blocking when
   called with `context.Background` and the server is wedged.
+- `Config`: added `CompressNext func(gf.Ctx) bool` and `DisableCompress bool`
+  to opt streamed handlers out of the built-in compress middleware. Fiber's
+  compress middleware calls `c.Response().Body()` in `shouldSkip`, which
+  drains a streaming body (`SendStreamWriter`, SSE, chunked proxying) into a
+  buffer before any byte hits the socket — clients otherwise receive the
+  full response only after the upstream stream ends. Threaded through to
+  `compress.Config{Next}`, which runs before `c.Next()` and avoids the drain.
 
 **rabbitmq**
 - Consumer goroutine leak on stop: `SubscribeWithKey`'s live-bind path
@@ -59,6 +80,14 @@ across all of them.
   before closing the connection; `Start` calls it in its terminal block.
   `SubscribeWithKey` reads `runCtx` under `RLock` and passes it to
   `bindAndConsume`.
+- `Stop`: `c.conn` and `c.ch` are now cleared to nil under the write lock so
+  post-stop accessors see an uninitialised state instead of a stale handle to
+  a closed connection.
+
+**redis**
+- `Stop`: `c.client` is now cleared to nil under the write lock so post-stop
+  accessors see an uninitialised state instead of a stale handle to a closed
+  pool.
 
 **postgresql**
 - `Stop`: `c.pool` is now set to nil under the write lock. Post-stop calls to
