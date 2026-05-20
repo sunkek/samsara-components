@@ -234,6 +234,8 @@ func (c *Component) Stop(_ context.Context) error {
 	closed := make(chan struct{})
 	close(closed)
 	c.stopCh = closed
+	c.client = nil
+	c.presigner = nil
 	c.mu.Unlock()
 
 	select {

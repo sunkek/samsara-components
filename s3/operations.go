@@ -64,7 +64,8 @@ const (
 // Upload puts an object into S3. The MIME type is auto-detected from the first
 // 512 bytes of Body unless [UploadRequest.ContentType] is set explicitly.
 func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
-	if c.getClient() == nil {
+	client := c.getClient()
+	if client == nil {
 		return fmt.Errorf("s3 upload: client not initialised")
 	}
 	if r.Bucket == "" || r.Key == "" {
@@ -103,7 +104,7 @@ func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
 		ACL:         types.ObjectCannedACL(acl),
 		ContentType: &contentType,
 	}
-	if _, err := c.getClient().PutObject(ctx, input); err != nil {
+	if _, err := client.PutObject(ctx, input); err != nil {
 		return fmt.Errorf("s3 upload %q/%q: %w", r.Bucket, r.Key, err)
 	}
 	return nil
@@ -112,13 +113,14 @@ func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
 // Download retrieves an object from S3. The caller must close the returned
 // [io.ReadCloser] after reading.
 func (c *Component) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
-	if c.getClient() == nil {
+	client := c.getClient()
+	if client == nil {
 		return nil, fmt.Errorf("s3 download: client not initialised")
 	}
 	if bucket == "" || key == "" {
 		return nil, fmt.Errorf("s3 download: bucket and key are required")
 	}
-	out, err := c.getClient().GetObject(ctx, &s3.GetObjectInput{
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
 	})
@@ -130,13 +132,14 @@ func (c *Component) Download(ctx context.Context, bucket, key string) (io.ReadCl
 
 // Delete removes a single object from S3.
 func (c *Component) Delete(ctx context.Context, bucket, key string) error {
-	if c.getClient() == nil {
+	client := c.getClient()
+	if client == nil {
 		return fmt.Errorf("s3 delete: client not initialised")
 	}
 	if bucket == "" || key == "" {
 		return fmt.Errorf("s3 delete: bucket and key are required")
 	}
-	if _, err := c.getClient().DeleteObject(ctx, &s3.DeleteObjectInput{
+	if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
 	}); err != nil {
@@ -148,7 +151,8 @@ func (c *Component) Delete(ctx context.Context, bucket, key string) error {
 // DeleteByPrefix removes all objects whose keys begin with prefix.
 // Returns the number of objects deleted. Handles pagination automatically.
 func (c *Component) DeleteByPrefix(ctx context.Context, bucket, prefix string) (int, error) {
-	if c.getClient() == nil {
+	client := c.getClient()
+	if client == nil {
 		return 0, fmt.Errorf("s3 delete-by-prefix: client not initialised")
 	}
 	if bucket == "" {
@@ -165,11 +169,10 @@ func (c *Component) DeleteByPrefix(ctx context.Context, bucket, prefix string) (
 
 	ids := make([]types.ObjectIdentifier, len(keys))
 	for i, k := range keys {
-		k := k // capture
 		ids[i] = types.ObjectIdentifier{Key: &k}
 	}
 
-	_, err = c.getClient().DeleteObjects(ctx, &s3.DeleteObjectsInput{
+	_, err = client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: &bucket,
 		Delete: &types.Delete{Objects: ids, Quiet: ptrOf(true)},
 	})
@@ -182,7 +185,8 @@ func (c *Component) DeleteByPrefix(ctx context.Context, bucket, prefix string) (
 // ListKeys returns all object keys in bucket with the given prefix.
 // Handles pagination automatically; safe for large buckets.
 func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]string, error) {
-	if c.getClient() == nil {
+	client := c.getClient()
+	if client == nil {
 		return nil, fmt.Errorf("s3 list-keys: client not initialised")
 	}
 	if bucket == "" {
@@ -194,7 +198,7 @@ func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]stri
 		continuationToken *string
 	)
 	for {
-		out, err := c.getClient().ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		out, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            &bucket,
 			Prefix:            &prefix,
 			ContinuationToken: continuationToken,
@@ -219,7 +223,8 @@ func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]stri
 // PresignDownload generates a time-limited presigned URL for downloading an object.
 // The URL is valid for [PresignRequest.TTL] or [Config.PresignTTL] if TTL is 0.
 func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (string, error) {
-	if c.getPresigner() == nil {
+	presigner := c.getPresigner()
+	if presigner == nil {
 		return "", fmt.Errorf("s3 presign-download: client not initialised")
 	}
 	if r.Bucket == "" || r.Key == "" {
@@ -229,7 +234,7 @@ func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (stri
 	if ttl == 0 {
 		ttl = c.cfg.presignTTL()
 	}
-	resp, err := c.getPresigner().PresignGetObject(ctx, &s3.GetObjectInput{
+	resp, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: &r.Bucket,
 		Key:    &r.Key,
 	}, s3.WithPresignExpires(ttl))
@@ -246,7 +251,8 @@ func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (stri
 // client must send matching Content-Type / Content-Length headers when using the
 // returned URL or the upload will fail signature validation.
 func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string, error) {
-	if c.getPresigner() == nil {
+	presigner := c.getPresigner()
+	if presigner == nil {
 		return "", fmt.Errorf("s3 presign-upload: client not initialised")
 	}
 	if r.Bucket == "" || r.Key == "" {
@@ -267,7 +273,7 @@ func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string
 		input.ContentLength = &r.ContentLength
 	}
 
-	resp, err := c.getPresigner().PresignPutObject(ctx, input, s3.WithPresignExpires(ttl))
+	resp, err := presigner.PresignPutObject(ctx, input, s3.WithPresignExpires(ttl))
 	if err != nil {
 		return "", fmt.Errorf("s3 presign-upload %q/%q: %w", r.Bucket, r.Key, err)
 	}
