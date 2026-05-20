@@ -83,6 +83,16 @@ type Config struct {
 	// EnableSecurityHeaders adds security-related response headers (HSTS,
 	// X-Frame-Options, CORP/COEP). Defaults to true.
 	EnableSecurityHeaders *bool
+
+	// CompressNext, if non-nil and returning true, bypasses the built-in
+	// compress middleware for the given request. Use this to skip streamed
+	// / Server-Sent-Event endpoints, where compression-induced buffering
+	// would defeat chunked delivery.
+	CompressNext func(c gf.Ctx) bool
+
+	// DisableCompress disables the built-in compress middleware entirely.
+	// Equivalent to CompressNext returning true for every request.
+	DisableCompress bool
 }
 
 func (c Config) addr() string {
@@ -273,7 +283,12 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	if c.cfg.securityHeaders() {
 		app.Use(securityHeadersMiddleware)
 	}
-	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
+	if !c.cfg.DisableCompress {
+		app.Use(compress.New(compress.Config{
+			Level: compress.LevelBestSpeed,
+			Next:  c.cfg.CompressNext,
+		}))
+	}
 
 	// ── Caller-supplied global middleware ─────────────────────────────────
 	// Applied before domain routes but after built-in middleware, so callers
@@ -344,6 +359,9 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	if err := app.Listen(c.cfg.addr(), gf.ListenConfig{
 		DisableStartupMessage: true,
 	}); err != nil {
+		c.mu.Lock()
+		c.app = nil
+		c.mu.Unlock()
 		return fmt.Errorf("fiber: listen: %w", err)
 	}
 
