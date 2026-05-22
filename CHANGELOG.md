@@ -12,6 +12,25 @@ across all of them.
 
 ---
 
+## redis/v0.2.0 — 2026-05-22
+
+### Added
+
+**redis**
+- TLS support. `Config` gains `TLS`, `TLSCAFile`, `TLSCertFile`, `TLSKeyFile`,
+  `TLSServerName`, `TLSInsecureSkipVerify`, and `TLSMinVersion` fields. When
+  `TLS` is true, `Start` builds a `*tls.Config` and wires it into
+  `redis.Options.TLSConfig`. `TLSServerName` defaults to `Host`;
+  `TLSMinVersion` accepts `"1.2"` (default) or `"1.3"`. Optional client cert
+  fields enable mutual TLS — both must be set together. Misconfiguration
+  (unreadable CA, non-PEM CA contents, half-set cert/key, unknown
+  `TLSMinVersion`) fails `Start` loudly; there is no plaintext fallback. A
+  warning is logged on `Start` when `TLSInsecureSkipVerify` is true.
+- `TestIntegration_TLS_Start` integration test gated on `REDIS_TLS_ADDR`
+  (skipped otherwise). Reads optional `REDIS_TLS_{CA_FILE,SERVER_NAME,USER,PASS,INSECURE}`.
+
+---
+
 ## s3/v0.1.5 — 2026-05-20
 
 ### Fixed

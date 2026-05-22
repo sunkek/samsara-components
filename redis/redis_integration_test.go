@@ -17,6 +17,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -287,6 +290,73 @@ func TestIntegration_Scan_NoMatch(t *testing.T) {
 	if len(found) != 0 {
 		t.Fatalf("expected 0 keys, got %d", len(found))
 	}
+}
+
+// TestIntegration_TLS_Start connects to a TLS-enabled Redis instance.
+//
+// Gated on the REDIS_TLS_ADDR env var (host:port). Skipped when unset, so
+// CI without a TLS-capable redis remains green. Optional env:
+//
+//	REDIS_TLS_CA_FILE       path to CA bundle (else system trust)
+//	REDIS_TLS_SERVER_NAME   SNI override (else host portion of REDIS_TLS_ADDR)
+//	REDIS_TLS_USER          ACL username
+//	REDIS_TLS_PASS          ACL password
+//	REDIS_TLS_INSECURE      "1" to skip cert verification (dev only)
+func TestIntegration_TLS_Start(t *testing.T) {
+	addr := os.Getenv("REDIS_TLS_ADDR")
+	if addr == "" {
+		t.Skip("REDIS_TLS_ADDR not set; skipping TLS integration test")
+	}
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("REDIS_TLS_ADDR %q: %v", addr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("REDIS_TLS_ADDR port %q: %v", portStr, err)
+	}
+
+	cfg := redis.Config{
+		Host:                  host,
+		Port:                  port,
+		User:                  os.Getenv("REDIS_TLS_USER"),
+		Pass:                  os.Getenv("REDIS_TLS_PASS"),
+		ConnectTimeout:        10 * time.Second,
+		TLS:                   true,
+		TLSCAFile:             os.Getenv("REDIS_TLS_CA_FILE"),
+		TLSServerName:         os.Getenv("REDIS_TLS_SERVER_NAME"),
+		TLSInsecureSkipVerify: os.Getenv("REDIS_TLS_INSECURE") == "1",
+	}
+	comp := redis.New(cfg, redis.WithLogger(&testLogger{t}))
+
+	readyCh := make(chan struct{})
+	errCh := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { errCh <- comp.Start(ctx, func() { close(readyCh) }) }()
+
+	select {
+	case <-readyCh:
+	case err := <-errCh:
+		cancel()
+		t.Fatalf("Start failed: %v", err)
+	case <-time.After(15 * time.Second):
+		cancel()
+		t.Fatal("Start timed out")
+	}
+
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer healthCancel()
+	if err := comp.Health(healthCtx); err != nil {
+		t.Fatalf("Health failed over TLS: %v", err)
+	}
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopCancel()
+	if err := comp.Stop(stopCtx); err != nil {
+		t.Errorf("Stop: %v", err)
+	}
+	cancel()
+	<-errCh
 }
 
 // Compile-time check that testAddr is used (avoids "declared but not used").

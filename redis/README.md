@@ -67,8 +67,36 @@ redis.Config{
     ReadTimeout    time.Duration // default: go-redis default (3s)
     WriteTimeout   time.Duration // default: go-redis default (ReadTimeout)
     PoolSize       int           // default: 10 per CPU
+
+    TLS                   bool   // enable TLS; gates all TLS_* fields below
+    TLSCAFile             string // PEM CA bundle for server verification (optional; system trust if empty)
+    TLSCertFile           string // client cert for mTLS (paired with TLSKeyFile)
+    TLSKeyFile            string // client private key for mTLS (paired with TLSCertFile)
+    TLSServerName         string // SNI / hostname verification target; defaults to Host
+    TLSInsecureSkipVerify bool   // disable cert verification (dev/debug only)
+    TLSMinVersion         string // "1.2" (default) or "1.3"
 }
 ```
+
+### TLS
+
+```go
+rdb := redis.New(redis.Config{
+    Host:      "rag_redis",
+    Port:      16379,
+    User:      "sber_kb",
+    Pass:      os.Getenv("REDIS_PASS"),
+    TLS:       true,
+    TLSCAFile: "/tls/ca.crt",
+    // TLSServerName: "rag_redis", // defaults to Host
+})
+```
+
+Server with `tls-auth-clients no` accepts the connection without a client
+certificate — leave `TLSCertFile` / `TLSKeyFile` empty. Both must be set
+together when mutual TLS is required. A misconfigured TLS block (bad CA,
+unknown `TLSMinVersion`, half-set cert/key) causes `Start` to fail loudly;
+there is no plaintext fallback.
 
 ### Options
 

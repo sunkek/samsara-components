@@ -56,6 +56,26 @@ type Config struct {
 	// PoolSize is the maximum number of connections in the pool.
 	// Defaults to 10 per CPU.
 	PoolSize int
+
+	// TLS enables TLS for the connection. When false, all TLS_* fields are ignored.
+	TLS bool
+	// TLSCAFile is path to a PEM-encoded CA bundle used to verify the server cert.
+	// Optional; if empty, the system trust store is used.
+	TLSCAFile string
+	// TLSCertFile enables mutual TLS (client certificate auth) when combined
+	// with TLSKeyFile. Both must be set together; leave empty when the server
+	// has tls-auth-clients no.
+	TLSCertFile string
+	// TLSKeyFile is the PEM-encoded private key paired with TLSCertFile.
+	TLSKeyFile string
+	// TLSServerName overrides the SNI / hostname verification target.
+	// Defaults to Config.Host.
+	TLSServerName string
+	// TLSInsecureSkipVerify disables certificate verification. Dev/debug only.
+	TLSInsecureSkipVerify bool
+	// TLSMinVersion is the minimum accepted TLS version. Defaults to TLS 1.2.
+	// Accepts "1.2" or "1.3".
+	TLSMinVersion string
 }
 
 func (c Config) addr() string {
@@ -170,6 +190,14 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	stopCh := c.stopCh
 	c.mu.Unlock()
 
+	tlsCfg, err := c.cfg.tlsConfig()
+	if err != nil {
+		return err
+	}
+	if tlsCfg != nil && tlsCfg.InsecureSkipVerify {
+		c.log.Info("redis: TLS certificate verification disabled (InsecureSkipVerify=true)", "addr", c.cfg.addr())
+	}
+
 	opts := &redis.Options{
 		Addr:         c.cfg.addr(),
 		Username:     c.cfg.User,
@@ -179,6 +207,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 		ReadTimeout:  c.cfg.ReadTimeout,
 		WriteTimeout: c.cfg.WriteTimeout,
 		PoolSize:     c.cfg.PoolSize,
+		TLSConfig:    tlsCfg,
 	}
 	client := redis.NewClient(opts)
 
