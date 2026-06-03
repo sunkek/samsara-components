@@ -114,6 +114,11 @@ sc.Config{
     ErrorHandler  gf.ErrorHandler // default: DefaultErrorHandler
     LoggerFormat  string          // default: structured JSON; "-" disables
     EnableSecurityHeaders *bool   // default: true
+
+    TrustProxy         bool                // default: false (direct exposure)
+    TrustProxyConfig   gf.TrustProxyConfig // trusted immediate peers (k8s: Private:true)
+    ProxyHeader        string              // header c.IP() reads when peer trusted
+    EnableIPValidation bool                // skip malformed ProxyHeader entries
 }
 ```
 

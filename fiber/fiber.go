@@ -93,6 +93,24 @@ type Config struct {
 	// DisableCompress disables the built-in compress middleware entirely.
 	// Equivalent to CompressNext returning true for every request.
 	DisableCompress bool
+
+	// TrustProxy enables proxy-aware client info. When true and the request's
+	// immediate peer matches TrustProxyConfig, c.IP() reads ProxyHeader instead
+	// of the socket remote address. Leave false (default) when the service is
+	// exposed directly to clients.
+	TrustProxy bool
+	// TrustProxyConfig declares which immediate peers are trusted proxies.
+	// In k8s set Private:true (ingress + pods sit on private ranges).
+	TrustProxyConfig gf.TrustProxyConfig
+	// ProxyHeader is the header c.IP() reads when the peer is trusted
+	// (e.g. fiber.HeaderXForwardedFor).
+	//
+	// CAUTION: fiber returns the LEFT-MOST entry of the header — spoof-safe
+	// only when a SINGLE proxy OVERWRITES it. For append-style chains (multiple
+	// proxies), resolve the client IP in your own middleware instead.
+	ProxyHeader string
+	// EnableIPValidation makes c.IP() skip malformed entries in ProxyHeader.
+	EnableIPValidation bool
 }
 
 func (c Config) addr() string {
@@ -266,11 +284,15 @@ func (c *Component) Name() string { return c.name }
 // Start is safe to call multiple times across restarts.
 func (c *Component) Start(ctx context.Context, ready func()) error {
 	app := gf.New(gf.Config{
-		BodyLimit:    c.cfg.bodyLimitBytes(),
-		ReadTimeout:  c.cfg.ReadTimeout,
-		WriteTimeout: c.cfg.WriteTimeout,
-		IdleTimeout:  c.cfg.IdleTimeout,
-		ErrorHandler: c.cfg.errorHandler(),
+		BodyLimit:          c.cfg.bodyLimitBytes(),
+		ReadTimeout:        c.cfg.ReadTimeout,
+		WriteTimeout:       c.cfg.WriteTimeout,
+		IdleTimeout:        c.cfg.IdleTimeout,
+		ErrorHandler:       c.cfg.errorHandler(),
+		TrustProxy:         c.cfg.TrustProxy,
+		TrustProxyConfig:   c.cfg.TrustProxyConfig,
+		ProxyHeader:        c.cfg.ProxyHeader,
+		EnableIPValidation: c.cfg.EnableIPValidation,
 	})
 
 	// ── Built-in middleware ────────────────────────────────────────────────

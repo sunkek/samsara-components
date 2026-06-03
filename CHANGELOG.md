@@ -12,6 +12,22 @@ across all of them.
 
 ---
 
+## fiber/v0.2.0 — 2026-06-03
+
+### Added
+
+**fiber**
+- Proxy-aware client info. `Config` gains `TrustProxy`, `TrustProxyConfig`,
+  `ProxyHeader`, and `EnableIPValidation`, threaded into `gf.Config`. When
+  `TrustProxy` is true and the request's immediate peer matches
+  `TrustProxyConfig`, `c.IP()` reads `ProxyHeader` instead of the socket remote
+  address. Defaults (`false`) preserve direct-exposure behaviour.
+- CAUTION: fiber returns the LEFT-MOST `ProxyHeader` entry — spoof-safe only
+  when a single proxy overwrites it. For append-style chains, resolve the
+  client IP in caller middleware instead.
+
+---
+
 ## redis/v0.2.0 — 2026-05-22
 
 ### Added
