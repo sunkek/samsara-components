@@ -72,6 +72,11 @@ type Config struct {
 	// Defaults to 30 s.
 	IdleTimeout time.Duration
 
+	// ReadBufferSize is the per-connection buffer for reading the request
+	// line and headers, in bytes. Must exceed the largest expected header
+	// (e.g. big Cookie). Defaults to fasthttp's 4096 if zero.
+	ReadBufferSize int
+
 	// ErrorHandler is called when a route handler returns a non-nil error.
 	// If nil, a default JSON error handler is used (see [DefaultErrorHandler]).
 	ErrorHandler gf.ErrorHandler
@@ -285,6 +290,7 @@ func (c *Component) Name() string { return c.name }
 func (c *Component) Start(ctx context.Context, ready func()) error {
 	app := gf.New(gf.Config{
 		BodyLimit:          c.cfg.bodyLimitBytes(),
+		ReadBufferSize:     c.cfg.ReadBufferSize,
 		ReadTimeout:        c.cfg.ReadTimeout,
 		WriteTimeout:       c.cfg.WriteTimeout,
 		IdleTimeout:        c.cfg.IdleTimeout,

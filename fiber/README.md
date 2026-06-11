@@ -111,6 +111,8 @@ sc.Config{
     WriteTimeout time.Duration // default: Fiber default
     IdleTimeout  time.Duration // default: Fiber default
 
+    ReadBufferSize int // per-conn header buffer in bytes; default: fasthttp 4096
+
     ErrorHandler  gf.ErrorHandler // default: DefaultErrorHandler
     LoggerFormat  string          // default: structured JSON; "-" disables
     EnableSecurityHeaders *bool   // default: true

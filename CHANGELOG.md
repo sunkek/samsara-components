@@ -12,6 +12,18 @@ across all of them.
 
 ---
 
+## fiber/v0.3.0 — 2026-06-11
+
+### Added
+
+**fiber**
+- `Config.ReadBufferSize` sets the per-connection buffer for reading the
+  request line and headers, threaded into `gf.Config`. Raise it above the
+  default (fasthttp's 4096) when clients send large headers (e.g. big
+  Cookie). Zero preserves the fasthttp default.
+
+---
+
 ## fiber/v0.2.0 — 2026-06-03
 
 ### Added
