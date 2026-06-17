@@ -276,7 +276,7 @@ func (c *Component) Stop(ctx context.Context) error {
 func (c *Component) Health(ctx context.Context) error {
 	client := c.getClient()
 	if client == nil {
-		return fmt.Errorf("redis: client not initialised")
+		return ErrNotReady
 	}
 	if err := client.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("redis: ping: %w", err)

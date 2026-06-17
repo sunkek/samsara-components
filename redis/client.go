@@ -45,9 +45,20 @@ type Client interface {
 // Use errors.Is(err, redis.ErrNil) to check.
 var ErrNil = redis.Nil
 
+// ErrNotReady is returned by every [Client] operation when the component has
+// no live connection: before [Component.Start] succeeds, after
+// [Component.Stop], or while the supervisor is restarting it (e.g. Redis is
+// down). Callers get this error instead of a nil-pointer panic and can choose
+// to fail open. Use errors.Is(err, redis.ErrNotReady) to check.
+var ErrNotReady = errors.New("redis: client not initialised")
+
 // Set stores value at key with the given TTL. Use ttl=0 for no expiry.
 func (c *Component) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
-	if err := c.getClient().Set(ctx, key, value, ttl).Err(); err != nil {
+	client := c.getClient()
+	if client == nil {
+		return ErrNotReady
+	}
+	if err := client.Set(ctx, key, value, ttl).Err(); err != nil {
 		return fmt.Errorf("redis set %q: %w", key, err)
 	}
 	return nil
@@ -56,7 +67,11 @@ func (c *Component) Set(ctx context.Context, key string, value any, ttl time.Dur
 // Get returns the string value stored at key.
 // Returns [ErrNil] if the key does not exist.
 func (c *Component) Get(ctx context.Context, key string) (string, error) {
-	val, err := c.getClient().Get(ctx, key).Result()
+	client := c.getClient()
+	if client == nil {
+		return "", ErrNotReady
+	}
+	val, err := client.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return "", ErrNil
@@ -68,7 +83,11 @@ func (c *Component) Get(ctx context.Context, key string) (string, error) {
 
 // Del deletes one or more keys. Returns the count of removed keys.
 func (c *Component) Del(ctx context.Context, keys ...string) (int64, error) {
-	n, err := c.getClient().Del(ctx, keys...).Result()
+	client := c.getClient()
+	if client == nil {
+		return 0, ErrNotReady
+	}
+	n, err := client.Del(ctx, keys...).Result()
 	if err != nil {
 		return 0, fmt.Errorf("redis del: %w", err)
 	}
@@ -77,7 +96,11 @@ func (c *Component) Del(ctx context.Context, keys ...string) (int64, error) {
 
 // Exists reports how many of the given keys currently exist.
 func (c *Component) Exists(ctx context.Context, keys ...string) (int64, error) {
-	n, err := c.getClient().Exists(ctx, keys...).Result()
+	client := c.getClient()
+	if client == nil {
+		return 0, ErrNotReady
+	}
+	n, err := client.Exists(ctx, keys...).Result()
 	if err != nil {
 		return 0, fmt.Errorf("redis exists: %w", err)
 	}
@@ -87,7 +110,11 @@ func (c *Component) Exists(ctx context.Context, keys ...string) (int64, error) {
 // Expire sets a TTL on key. Returns true if the key exists and the timeout
 // was set, false if the key does not exist.
 func (c *Component) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
-	ok, err := c.getClient().Expire(ctx, key, ttl).Result()
+	client := c.getClient()
+	if client == nil {
+		return false, ErrNotReady
+	}
+	ok, err := client.Expire(ctx, key, ttl).Result()
 	if err != nil {
 		return false, fmt.Errorf("redis expire %q: %w", key, err)
 	}
@@ -97,7 +124,11 @@ func (c *Component) Expire(ctx context.Context, key string, ttl time.Duration) (
 // TTL returns the remaining time-to-live of key.
 // Returns -2 if the key does not exist, -1 if the key has no expiry.
 func (c *Component) TTL(ctx context.Context, key string) (time.Duration, error) {
-	d, err := c.getClient().TTL(ctx, key).Result()
+	client := c.getClient()
+	if client == nil {
+		return 0, ErrNotReady
+	}
+	d, err := client.TTL(ctx, key).Result()
 	if err != nil {
 		return 0, fmt.Errorf("redis ttl %q: %w", key, err)
 	}
@@ -110,12 +141,16 @@ func (c *Component) TTL(ctx context.Context, key string) (time.Duration, error) 
 // pattern follows Redis glob-style syntax: * matches any sequence,
 // ? matches a single character, [abc] matches a character class.
 func (c *Component) Scan(ctx context.Context, pattern string) ([]string, error) {
+	client := c.getClient()
+	if client == nil {
+		return nil, ErrNotReady
+	}
 	var (
 		cursor uint64
 		keys   []string
 	)
 	for {
-		batch, next, err := c.getClient().Scan(ctx, cursor, pattern, 100).Result()
+		batch, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
 		if err != nil {
 			return nil, fmt.Errorf("redis scan %q: %w", pattern, err)
 		}

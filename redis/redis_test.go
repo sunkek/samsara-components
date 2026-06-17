@@ -119,6 +119,55 @@ func TestErrNil_Sentinel(t *testing.T) {
 	}
 }
 
+// TestErrNotReady verifies that every Client operation returns ErrNotReady —
+// not a nil-pointer panic — when the component has no live connection (before
+// Start, after Stop, or during a restart while Redis is down).
+func TestErrNotReady_NoPanic(t *testing.T) {
+	c := redis.New(redis.Config{}) // never Started: client is nil
+	ctx := context.Background()
+
+	t.Run("Set", func(t *testing.T) {
+		if err := c.Set(ctx, "k", "v", 0); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Set: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("Get", func(t *testing.T) {
+		if _, err := c.Get(ctx, "k"); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Get: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("Del", func(t *testing.T) {
+		if _, err := c.Del(ctx, "k"); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Del: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("Exists", func(t *testing.T) {
+		if _, err := c.Exists(ctx, "k"); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Exists: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("Expire", func(t *testing.T) {
+		if _, err := c.Expire(ctx, "k", time.Second); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Expire: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("TTL", func(t *testing.T) {
+		if _, err := c.TTL(ctx, "k"); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("TTL: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("Scan", func(t *testing.T) {
+		if _, err := c.Scan(ctx, "*"); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Scan: want ErrNotReady, got %v", err)
+		}
+	})
+	t.Run("Health", func(t *testing.T) {
+		if err := c.Health(ctx); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("Health: want ErrNotReady, got %v", err)
+		}
+	})
+}
+
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------

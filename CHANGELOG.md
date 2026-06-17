@@ -12,6 +12,25 @@ across all of them.
 
 ---
 
+## redis/v0.2.1 — 2026-06-17
+
+### Fixed
+
+**redis**
+- `Set`, `Get`, `Del`, `Exists`, `Expire`, `TTL`, and `Scan` no longer panic
+  with a nil-pointer dereference when the component has no live connection
+  (before `Start`, after `Stop`, or while the supervisor restarts it because
+  Redis is down). They now return the new sentinel `ErrNotReady` instead, so
+  callers can fail open. Detect it with `errors.Is(err, redis.ErrNotReady)`.
+
+### Added
+
+**redis**
+- `ErrNotReady` sentinel error, returned by all `Client` operations and
+  `Health` when no connection is established.
+
+---
+
 ## fiber/v0.3.0 — 2026-06-11
 
 ### Added
