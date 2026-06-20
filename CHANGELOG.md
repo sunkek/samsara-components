@@ -12,6 +12,28 @@ across all of them.
 
 ---
 
+## rabbitmq/v0.2.0 — 2026-06-21
+
+### Added
+
+**rabbitmq**
+- Native dead-letter / redelivery support, additive (no API removal):
+  - `SubscribeWithOptions(exchange, queue, routingKey, handler, opts)` with
+    `SubscribeOptions{QueueArgs amqp.Table, QueueType string}`. Declares the
+    work queue with custom `x-arguments` (`x-dead-letter-exchange`,
+    `x-message-ttl`, `x-delivery-limit`) so the broker owns dead-lettering and
+    the redelivery cap at declare time. `QueueType` sets `x-queue-type`;
+    `QueueTypeQuorum` const provided (quorum queues are required for
+    `x-delivery-limit`). `Subscribe`/`SubscribeWithKey` are unchanged and now
+    route through it with nil queue args.
+  - `ErrDropToDLX` sentinel error. A handler that returns (or wraps with `%w`)
+    it is nacked with `requeue=false`, firing a queue-level dead-letter policy.
+    Any other error keeps the previous behaviour (nack with `requeue=true`).
+  - `PublishWithHeaders(ctx, exchange, routingKey, contentType, headers, body)`
+    stamps custom AMQP headers (e.g. an attempt counter) on a message.
+
+---
+
 ## redis/v0.2.1 — 2026-06-17
 
 ### Fixed

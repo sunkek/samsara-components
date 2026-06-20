@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -272,6 +273,53 @@ func TestIntegration_HandlerError_Nacks(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatalf("timed out waiting for retry; attempts so far: %d", attempts)
+	}
+}
+
+func TestIntegration_DropToDLX_DeadLetters(t *testing.T) {
+	comp := testComp(t)
+
+	// Work exchange + a dead-letter exchange/queue. The work queue is declared
+	// with x-dead-letter-exchange so a nack(requeue=false) dead-letters there.
+	for _, e := range []string{"test.dlx.work", "test.dlx.dead"} {
+		if err := comp.DeclareExchange(e, rabbitmq.ExchangeDirect, false); err != nil {
+			t.Fatalf("DeclareExchange %q: %v", e, err)
+		}
+	}
+
+	err := comp.SubscribeWithOptions("test.dlx.work", "test.dlx.work.queue", "test.dlx.work.queue",
+		func(d amqp.Delivery) error {
+			return fmt.Errorf("permanent failure: %w", rabbitmq.ErrDropToDLX)
+		},
+		rabbitmq.SubscribeOptions{
+			QueueArgs: amqp.Table{
+				"x-dead-letter-exchange":    "test.dlx.dead",
+				"x-dead-letter-routing-key": "test.dlx.dead.queue",
+			},
+		})
+	if err != nil {
+		t.Fatalf("SubscribeWithOptions: %v", err)
+	}
+
+	deadLettered := make(chan struct{})
+	if err := comp.Subscribe("test.dlx.dead", "test.dlx.dead.queue", func(d amqp.Delivery) error {
+		close(deadLettered)
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe DLQ: %v", err)
+	}
+
+	startComp(t, comp)
+
+	if err := comp.Publish(context.Background(), "test.dlx.work", "test.dlx.work.queue",
+		rabbitmq.ContentTypeJSON, []byte(`{}`)); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	select {
+	case <-deadLettered:
+	case <-time.After(15 * time.Second):
+		t.Fatal("timed out waiting for message to be dead-lettered to DLQ")
 	}
 }
 

@@ -2,9 +2,12 @@ package rabbitmq_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sunkek/samsara-components/rabbitmq"
 )
 
@@ -135,6 +138,28 @@ func TestSubscribeWithKey_BeforeStart(t *testing.T) {
 	comp := rabbitmq.New(rabbitmq.Config{})
 	if err := comp.SubscribeWithKey("events", "user.queue", "user.#", nil); err != nil {
 		t.Fatalf("SubscribeWithKey before Start returned error: %v", err)
+	}
+}
+
+func TestSubscribeWithOptions_BeforeStart(t *testing.T) {
+	comp := rabbitmq.New(rabbitmq.Config{})
+	err := comp.SubscribeWithOptions("events", "work.queue", "work.#", nil,
+		rabbitmq.SubscribeOptions{
+			QueueType: rabbitmq.QueueTypeQuorum,
+			QueueArgs: amqp.Table{
+				"x-dead-letter-exchange": "events.dlx",
+				"x-delivery-limit":       int32(5),
+			},
+		})
+	if err != nil {
+		t.Fatalf("SubscribeWithOptions before Start returned error: %v", err)
+	}
+}
+
+func TestErrDropToDLX_Wrapping(t *testing.T) {
+	wrapped := fmt.Errorf("handler failed: %w", rabbitmq.ErrDropToDLX)
+	if !errors.Is(wrapped, rabbitmq.ErrDropToDLX) {
+		t.Fatal("wrapped ErrDropToDLX must satisfy errors.Is")
 	}
 }
 

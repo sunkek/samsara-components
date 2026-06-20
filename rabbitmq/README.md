@@ -57,6 +57,31 @@ mq.Subscribe("events", "user.created", func(d amqp.Delivery) error {
 mq.SubscribeWithKey("events", "user.queue", "user.#", handleUserEvent)
 ```
 
+#### Dead-letter queues and redelivery caps
+
+`SubscribeWithOptions` declares the work queue with custom `x-arguments`, so the
+broker owns dead-lettering and the redelivery limit. Pair it with a handler that
+returns `ErrDropToDLX` to nack **without** requeue, firing the queue's DLX:
+
+```go
+mq.SubscribeWithOptions("events", "work.queue", "work.#", handler,
+    rabbitmq.SubscribeOptions{
+        QueueType: rabbitmq.QueueTypeQuorum, // required for x-delivery-limit
+        QueueArgs: amqp.Table{
+            "x-dead-letter-exchange": "events.dlx",
+            "x-delivery-limit":       int32(5), // broker-enforced cap
+        },
+    },
+)
+
+func handler(d amqp.Delivery) error {
+    if permanentFailure {
+        return fmt.Errorf("bad payload: %w", rabbitmq.ErrDropToDLX) // nack, no requeue → DLX
+    }
+    return transientErr // nack with requeue → retry in place (quorum cap applies)
+}
+```
+
 ### Publish
 
 ```go
@@ -68,6 +93,13 @@ err := mq.Publish(ctx, "events", "user.created",
 // With AMQP message type field (useful for event-driven routing):
 err := mq.PublishWithType(ctx, "events", "user.created",
     rabbitmq.ContentTypeJSON, "UserCreated",
+    body,
+)
+
+// With custom AMQP headers (e.g. an attempt counter on a republished message):
+err := mq.PublishWithHeaders(ctx, "events", "user.created",
+    rabbitmq.ContentTypeJSON,
+    amqp.Table{"x-attempt": int32(2)},
     body,
 )
 ```
@@ -134,15 +166,18 @@ rabbitmq.WithName("events-broker")      // override component name
 | `DeclareExchange(name, kind, durable)` | Register an exchange; re-declared on restart |
 | `Subscribe(exchange, queue, handler)` | Bind queue with routing key = queue name |
 | `SubscribeWithKey(exchange, queue, key, handler)` | Bind with explicit routing key |
+| `SubscribeWithOptions(exchange, queue, key, handler, opts)` | Bind, declaring the queue with `QueueArgs`/`QueueType` (DLX, `x-delivery-limit`, quorum) |
 | `Publish(ctx, exchange, routingKey, contentType, body)` | Publish a message |
 | `PublishWithType(ctx, exchange, routingKey, contentType, messageType, body)` | Publish with AMQP type field |
+| `PublishWithHeaders(ctx, exchange, routingKey, contentType, headers, body)` | Publish with custom AMQP headers |
 
 ### Message handler contract
 
 ```go
 func handler(d amqp.Delivery) error {
-    // Return nil  → message is acked (removed from queue)
-    // Return err  → message is nacked with requeue=true (will be retried)
+    // Return nil           → message is acked (removed from queue)
+    // Return ErrDropToDLX   → nacked with requeue=false (dead-lettered via queue DLX)
+    // Return any other err  → nacked with requeue=true (retried in place)
 }
 ```
 

@@ -2,7 +2,9 @@ package rabbitmq
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -18,6 +20,36 @@ const (
 	ContentTypeBytes    ContentType = "application/octet-stream"
 )
 
+// QueueTypeQuorum is the x-queue-type value for quorum queues, which support
+// broker-enforced redelivery limits via x-delivery-limit. Use it as
+// [SubscribeOptions.QueueType].
+const QueueTypeQuorum = "quorum"
+
+// ErrDropToDLX is a sentinel error a handler may return (or wrap) to signal
+// that the message must NOT be requeued. The component nacks with
+// requeue=false, so any queue-level dead-letter-exchange policy fires and the
+// message is dead-lettered instead of looping in place.
+//
+// A handler that returns any other error gets the default behaviour: nack with
+// requeue=true (retry in place). Use errors.Join or fmt.Errorf("%w", ...) to
+// attach context while preserving the drop signal.
+var ErrDropToDLX = errors.New("rabbitmq: drop message to dead-letter exchange")
+
+// SubscribeOptions carries optional queue-declaration parameters for
+// [Component.SubscribeWithOptions]. The zero value reproduces the behaviour of
+// [Component.Subscribe].
+type SubscribeOptions struct {
+	// QueueArgs are passed verbatim as the x-arguments of QueueDeclare, e.g.
+	// "x-dead-letter-exchange", "x-message-ttl", "x-delivery-limit". This lets
+	// the broker own dead-lettering and the redelivery cap at declare time.
+	QueueArgs amqp.Table
+
+	// QueueType sets "x-queue-type" (e.g. [QueueTypeQuorum]). When non-empty it
+	// overrides any "x-queue-type" present in QueueArgs. Quorum queues are
+	// required for broker-enforced "x-delivery-limit".
+	QueueType string
+}
+
 // subscription describes a queue binding and its message handler.
 // The consumer goroutine's lifetime is tied to the component context passed
 // into Start, not to an arbitrary caller context.
@@ -25,6 +57,7 @@ type subscription struct {
 	routingKey string
 	exchange   string
 	queue      string
+	queueArgs  amqp.Table
 	handler    func(amqp.Delivery) error
 }
 
@@ -71,7 +104,23 @@ func (c *Component) Subscribe(exchange, queue string, handler func(amqp.Delivery
 // SubscribeWithKey is like [Subscribe] but uses an explicit routing key,
 // allowing patterns like "user.#" on topic exchanges.
 func (c *Component) SubscribeWithKey(exchange, queue, routingKey string, handler func(amqp.Delivery) error) error {
-	sub := subscription{exchange: exchange, queue: queue, routingKey: routingKey, handler: handler}
+	return c.SubscribeWithOptions(exchange, queue, routingKey, handler, SubscribeOptions{})
+}
+
+// SubscribeWithOptions is like [SubscribeWithKey] but declares the queue with
+// the parameters in opts, allowing native dead-letter and redelivery-cap setups
+// (x-dead-letter-exchange, x-delivery-limit, quorum queues) at declare time.
+//
+// The queue must not already exist with conflicting arguments; AMQP rejects a
+// redeclare whose x-arguments differ from the live queue.
+func (c *Component) SubscribeWithOptions(exchange, queue, routingKey string, handler func(amqp.Delivery) error, opts SubscribeOptions) error {
+	sub := subscription{
+		exchange:   exchange,
+		queue:      queue,
+		routingKey: routingKey,
+		queueArgs:  buildQueueArgs(opts),
+		handler:    handler,
+	}
 
 	c.subsMu.Lock()
 	c.subs = append(c.subs, sub)
@@ -105,39 +154,42 @@ func (c *Component) SubscribeWithKey(exchange, queue, routingKey string, handler
 // in your own retry loop — the appropriate strategy (retry, dead-letter, drop)
 // is a domain concern, not an infrastructure one.
 func (c *Component) Publish(ctx context.Context, exchange, routingKey string, contentType ContentType, body []byte) error {
-	c.mu.RLock()
-	ch := c.ch
-	c.mu.RUnlock()
-
-	if ch == nil || ch.IsClosed() {
-		return fmt.Errorf("rabbitmq: channel not available")
-	}
-
-	pubCtx, cancel := context.WithTimeout(ctx, c.cfg.publishTimeout())
-	defer cancel()
-
-	err := ch.PublishWithContext(
-		pubCtx,
-		exchange,
-		routingKey,
-		false, // mandatory
-		false, // immediate
-		amqp.Publishing{
-			ContentType:  string(contentType),
-			DeliveryMode: amqp.Persistent,
-			Timestamp:    time.Now().UTC(),
-			Body:         body,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("rabbitmq: publish to %q/%q: %w", exchange, routingKey, err)
-	}
-	return nil
+	return c.publish(ctx, exchange, routingKey, amqp.Publishing{
+		ContentType:  string(contentType),
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now().UTC(),
+		Body:         body,
+	})
 }
 
 // PublishWithType is like [Publish] but also sets the AMQP message type field,
 // useful for event-driven architectures where consumers route on message type.
 func (c *Component) PublishWithType(ctx context.Context, exchange, routingKey string, contentType ContentType, messageType string, body []byte) error {
+	return c.publish(ctx, exchange, routingKey, amqp.Publishing{
+		ContentType:  string(contentType),
+		Type:         messageType,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now().UTC(),
+		Body:         body,
+	})
+}
+
+// PublishWithHeaders is like [Publish] but stamps the given AMQP headers on the
+// message, letting callers carry custom metadata (e.g. an attempt counter) on a
+// republished message.
+func (c *Component) PublishWithHeaders(ctx context.Context, exchange, routingKey string, contentType ContentType, headers amqp.Table, body []byte) error {
+	return c.publish(ctx, exchange, routingKey, amqp.Publishing{
+		ContentType:  string(contentType),
+		Headers:      headers,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now().UTC(),
+		Body:         body,
+	})
+}
+
+// publish is the shared publish path: it validates the live channel, applies
+// the per-attempt PublishTimeout, and wraps broker errors with context.
+func (c *Component) publish(ctx context.Context, exchange, routingKey string, msg amqp.Publishing) error {
 	c.mu.RLock()
 	ch := c.ch
 	c.mu.RUnlock()
@@ -149,24 +201,33 @@ func (c *Component) PublishWithType(ctx context.Context, exchange, routingKey st
 	pubCtx, cancel := context.WithTimeout(ctx, c.cfg.publishTimeout())
 	defer cancel()
 
-	err := ch.PublishWithContext(
+	if err := ch.PublishWithContext(
 		pubCtx,
 		exchange,
 		routingKey,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType:  string(contentType),
-			Type:         messageType,
-			DeliveryMode: amqp.Persistent,
-			Timestamp:    time.Now().UTC(),
-			Body:         body,
-		},
-	)
-	if err != nil {
+		false, // mandatory
+		false, // immediate
+		msg,
+	); err != nil {
 		return fmt.Errorf("rabbitmq: publish to %q/%q: %w", exchange, routingKey, err)
 	}
 	return nil
+}
+
+// buildQueueArgs merges SubscribeOptions into an amqp.Table for QueueDeclare.
+// It returns nil for the zero-value options so the declare matches the legacy
+// nil-argument behaviour exactly. QueueType, when set, overrides any
+// x-queue-type in QueueArgs.
+func buildQueueArgs(opts SubscribeOptions) amqp.Table {
+	if len(opts.QueueArgs) == 0 && opts.QueueType == "" {
+		return nil
+	}
+	args := amqp.Table{}
+	maps.Copy(args, opts.QueueArgs)
+	if opts.QueueType != "" {
+		args["x-queue-type"] = opts.QueueType
+	}
+	return args
 }
 
 // bindAndConsume declares the queue, binds it to the exchange with the given
@@ -178,7 +239,7 @@ func (c *Component) bindAndConsume(ctx context.Context, ch *amqp.Channel, sub su
 		false, // autoDelete
 		false, // exclusive
 		false, // noWait
-		nil,
+		sub.queueArgs,
 	); err != nil {
 		return fmt.Errorf("rabbitmq: declare queue %q: %w", sub.queue, err)
 	}
@@ -222,9 +283,13 @@ func (c *Component) bindAndConsume(ctx context.Context, ch *amqp.Channel, sub su
 					return
 				}
 				if err := sub.handler(d); err != nil {
-					c.log.Error("rabbitmq: handler error — nacking with requeue",
-						"queue", sub.queue, "error", err)
-					if nackErr := d.Nack(false, true); nackErr != nil {
+					// Default: requeue in place. If the handler signals
+					// ErrDropToDLX, nack with requeue=false so a queue-level
+					// dead-letter-exchange policy fires instead.
+					requeue := !errors.Is(err, ErrDropToDLX)
+					c.log.Error("rabbitmq: handler error — nacking",
+						"queue", sub.queue, "requeue", requeue, "error", err)
+					if nackErr := d.Nack(false, requeue); nackErr != nil {
 						c.log.Error("rabbitmq: nack failed", "queue", sub.queue, "error", nackErr)
 					}
 				} else {
