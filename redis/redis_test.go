@@ -131,6 +131,11 @@ func TestErrNotReady_NoPanic(t *testing.T) {
 			t.Fatalf("Set: want ErrNotReady, got %v", err)
 		}
 	})
+	t.Run("SetNX", func(t *testing.T) {
+		if _, err := c.SetNX(ctx, "k", "v", 0); !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("SetNX: want ErrNotReady, got %v", err)
+		}
+	})
 	t.Run("Get", func(t *testing.T) {
 		if _, err := c.Get(ctx, "k"); !errors.Is(err, redis.ErrNotReady) {
 			t.Fatalf("Get: want ErrNotReady, got %v", err)

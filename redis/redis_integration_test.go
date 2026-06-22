@@ -20,6 +20,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,6 +146,122 @@ func TestIntegration_SetGet(t *testing.T) {
 	}
 	if val != "hello" {
 		t.Fatalf("expected %q, got %q", "hello", val)
+	}
+}
+
+func TestIntegration_SetNX(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "setnx")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	// First claim on an absent key wins.
+	won, err := comp.SetNX(ctx, key, "first", time.Minute)
+	if err != nil {
+		t.Fatalf("SetNX (first): %v", err)
+	}
+	if !won {
+		t.Fatal("expected first SetNX to win (true)")
+	}
+	if val, err := comp.Get(ctx, key); err != nil || val != "first" {
+		t.Fatalf("Get after first SetNX: val=%q err=%v", val, err)
+	}
+
+	// Second claim on the same key loses; value unchanged.
+	won, err = comp.SetNX(ctx, key, "second", time.Minute)
+	if err != nil {
+		t.Fatalf("SetNX (second): %v", err)
+	}
+	if won {
+		t.Fatal("expected second SetNX to lose (false)")
+	}
+	if val, err := comp.Get(ctx, key); err != nil || val != "first" {
+		t.Fatalf("value changed after losing SetNX: val=%q err=%v", val, err)
+	}
+}
+
+func TestIntegration_SetNX_AfterExpiry(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "setnx_expiry")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	won, err := comp.SetNX(ctx, key, "v", 300*time.Millisecond)
+	if err != nil || !won {
+		t.Fatalf("SetNX (initial): won=%v err=%v", won, err)
+	}
+
+	time.Sleep(400 * time.Millisecond)
+
+	// Key gone after TTL — claim wins again.
+	won, err = comp.SetNX(ctx, key, "v2", time.Minute)
+	if err != nil {
+		t.Fatalf("SetNX (after expiry): %v", err)
+	}
+	if !won {
+		t.Fatal("expected SetNX to win again after TTL expiry")
+	}
+}
+
+func TestIntegration_SetNX_NoExpiry(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "setnx_nottl")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	won, err := comp.SetNX(ctx, key, "v", 0)
+	if err != nil || !won {
+		t.Fatalf("SetNX (ttl=0): won=%v err=%v", won, err)
+	}
+
+	ttl, err := comp.TTL(ctx, key)
+	if err != nil {
+		t.Fatalf("TTL: %v", err)
+	}
+	if ttl >= 0 {
+		t.Fatalf("expected negative TTL (no expiry), got %v", ttl)
+	}
+}
+
+func TestIntegration_SetNX_Concurrent(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "setnx_race")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	const n = 50
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		winners int
+	)
+	start := make(chan struct{})
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			won, err := comp.SetNX(ctx, key, strconv.Itoa(i), time.Minute)
+			if err != nil {
+				t.Errorf("goroutine %d: SetNX: %v", i, err)
+				return
+			}
+			if won {
+				mu.Lock()
+				winners++
+				mu.Unlock()
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	if winners != 1 {
+		t.Fatalf("expected exactly 1 winner, got %d", winners)
 	}
 }
 

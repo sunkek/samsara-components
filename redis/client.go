@@ -19,6 +19,13 @@ type Client interface {
 	// Use ttl=0 for no expiry.
 	Set(ctx context.Context, key string, value any, ttl time.Duration) error
 
+	// SetNX atomically stores value at key with the given TTL only if key does
+	// not already exist (Redis SET ... NX). Returns true when the key was set by
+	// this call (the caller won the claim), false when it already existed. Use
+	// ttl=0 for no expiry. This is the race-free building block for single-use
+	// claims, locks, and idempotency keys.
+	SetNX(ctx context.Context, key string, value any, ttl time.Duration) (bool, error)
+
 	// Get returns the string value at key.
 	// Returns [ErrNil] if the key does not exist.
 	Get(ctx context.Context, key string) (string, error)
@@ -62,6 +69,28 @@ func (c *Component) Set(ctx context.Context, key string, value any, ttl time.Dur
 		return fmt.Errorf("redis set %q: %w", key, err)
 	}
 	return nil
+}
+
+// SetNX atomically stores value at key with the given TTL only if key does not
+// already exist (Redis SET ... NX). Returns true when the key was set by this
+// call (the caller won the claim), false when it already existed. Use ttl=0 for
+// no expiry. Single Redis round-trip; atomic server-side.
+func (c *Component) SetNX(ctx context.Context, key string, value any, ttl time.Duration) (bool, error) {
+	client := c.getClient()
+	if client == nil {
+		return false, ErrNotReady
+	}
+	// SetArgs with Mode "NX" maps to SET key value NX [EX ttl] — a single
+	// atomic command. (client.SetNX is deprecated in go-redis.) On a losing
+	// claim the server returns nil, surfaced here as redis.Nil.
+	err := client.SetArgs(ctx, key, value, redis.SetArgs{Mode: "NX", TTL: ttl}).Err()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("redis setnx %q: %w", key, err)
+	}
+	return true, nil
 }
 
 // Get returns the string value stored at key.
