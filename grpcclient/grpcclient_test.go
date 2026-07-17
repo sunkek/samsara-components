@@ -15,8 +15,8 @@ import (
 
 func TestNew_DefaultName(t *testing.T) {
 	comp := grpcclient.New(grpcclient.Config{Target: "localhost:9090"})
-	if comp.Name() != "grpc-client" {
-		t.Fatalf("expected name %q, got %q", "grpc-client", comp.Name())
+	if comp.Name() != "grpcclient" {
+		t.Fatalf("expected name %q, got %q", "grpcclient", comp.Name())
 	}
 }
 

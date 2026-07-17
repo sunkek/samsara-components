@@ -27,7 +27,7 @@ client := sc.New(sc.Config{
 })
 sup.Add(client,
     samsara.WithTier(samsara.TierCritical),
-    samsara.WithDependencies("postgres"), // connect after DB is ready
+    samsara.WithDependencies("postgresql"), // connect after DB is ready
 )
 ```
 
@@ -48,7 +48,11 @@ orderAdapter := order.New(orderClient, mq)
 
 `Conn()` returns `nil` before `Start` is called. Because samsara starts
 components in dependency order, any component that declares
-`WithDependencies("grpc-client")` is guaranteed to see a non-nil `Conn()`.
+`WithDependencies("grpcclient")` is guaranteed to see a non-nil `Conn()`.
+
+> **Note:** the default component name changed from `"grpc-client"` to
+> `"grpcclient"`. Update any `samsara.WithDependencies("grpc-client")`
+> references, or pin the old name with `WithName("grpc-client")`.
 
 ### Typical wiring pattern
 

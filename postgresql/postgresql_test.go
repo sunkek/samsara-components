@@ -15,8 +15,8 @@ import (
 
 func TestNew_DefaultName(t *testing.T) {
 	comp := postgresql.New(postgresql.Config{})
-	if comp.Name() != "postgres" {
-		t.Fatalf("expected name %q, got %q", "postgres", comp.Name())
+	if comp.Name() != "postgresql" {
+		t.Fatalf("expected name %q, got %q", "postgresql", comp.Name())
 	}
 }
 

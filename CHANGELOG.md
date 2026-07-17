@@ -12,6 +12,18 @@ across all of them.
 
 ### Changed
 
+**postgresql**
+- **Breaking:** default component `Name()` changed from `"postgres"` to
+  `"postgresql"` to match the module name. Update
+  `samsara.WithDependencies("postgres")` references, or pin the old name
+  with `WithName("postgres")`.
+
+**grpcclient**
+- **Breaking:** default component `Name()` changed from `"grpc-client"` to
+  `"grpcclient"` to match the module name. Update
+  `samsara.WithDependencies("grpc-client")` references, or pin the old name
+  with `WithName("grpc-client")`.
+
 **all components**
 - **Breaking:** every component's local `Logger` interface is now the identical
   four-method set `Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`.

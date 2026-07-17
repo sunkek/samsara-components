@@ -109,7 +109,7 @@ postgresql.Config{
 
 ```go
 postgresql.WithLogger(slog.Default())           // attach a structured logger
-postgresql.WithName("postgres-replica")         // override component name
+postgresql.WithName("postgres-replica")         // override component name (default: "postgresql")
 ```
 
 ---

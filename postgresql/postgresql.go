@@ -139,7 +139,7 @@ func New(cfg Config, opts ...Option) *Component {
 	c := &Component{
 		cfg:    cfg,
 		log:    nopLogger{},
-		name:   "postgres",
+		name:   "postgresql",
 		stopCh: make(chan struct{}), // initialised so Stop-before-Start is safe
 	}
 	for _, o := range opts {
