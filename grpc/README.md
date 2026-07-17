@@ -195,6 +195,9 @@ sc.Config{
     // Connection lifetime
     MaxConnectionIdle time.Duration // default: 5 min (0 = unlimited)
     MaxConnectionAge  time.Duration // default: 0 (disabled)
+
+    // Shutdown
+    StopTimeout time.Duration // graceful stop bound before force-stop; default: 10 s
 }
 ```
 

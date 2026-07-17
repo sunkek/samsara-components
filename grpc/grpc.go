@@ -282,7 +282,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 				}()
 				select {
 				case <-done:
-				case <-time.After(10 * time.Second):
+				case <-time.After(c.cfg.stopTimeout()):
 					c.log.Warn("grpc: ctx-cancel graceful stop timed out, forcing stop")
 					srv2.Stop()
 					<-done

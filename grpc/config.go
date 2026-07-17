@@ -37,6 +37,10 @@ type Config struct {
 	// MaxConnectionIdle is how long an idle client connection is kept open.
 	// Defaults to 5 minutes.
 	MaxConnectionIdle time.Duration
+	// StopTimeout bounds the graceful stop triggered by samsara context
+	// cancellation before the server is force-stopped. Defaults to 10 s.
+	StopTimeout time.Duration
+
 	// MaxConnectionAge is the maximum duration a connection may exist before
 	// it is gracefully closed. Defaults to unlimited (0 = disabled).
 	MaxConnectionAge time.Duration
@@ -66,6 +70,13 @@ func (c Config) maxSendMsgSizeBytes() int {
 		return c.MaxSendMsgSizeMB * 1024 * 1024
 	}
 	return 4 * 1024 * 1024
+}
+
+func (c Config) stopTimeout() time.Duration {
+	if c.StopTimeout > 0 {
+		return c.StopTimeout
+	}
+	return 10 * time.Second
 }
 
 func (c Config) keepaliveTime() time.Duration {

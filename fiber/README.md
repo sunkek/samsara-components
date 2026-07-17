@@ -111,6 +111,9 @@ sc.Config{
     WriteTimeout time.Duration // default: Fiber default
     IdleTimeout  time.Duration // default: Fiber default
 
+    ShutdownTimeout time.Duration // graceful shutdown bound; default: 10 s
+    HealthTimeout   time.Duration // /health probe client timeout; default: 5 s
+
     ReadBufferSize int // per-conn header buffer in bytes; default: fasthttp 4096
 
     ErrorHandler  gf.ErrorHandler // default: DefaultErrorHandler

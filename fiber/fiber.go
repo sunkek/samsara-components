@@ -72,6 +72,13 @@ type Config struct {
 	// Defaults to 30 s.
 	IdleTimeout time.Duration
 
+	// ShutdownTimeout bounds the graceful shutdown triggered by samsara
+	// context cancellation (the ctx-watcher path). Defaults to 10 s.
+	ShutdownTimeout time.Duration
+	// HealthTimeout bounds the HTTP probe issued by [Component.Health]
+	// against the built-in /health endpoint. Defaults to 5 s.
+	HealthTimeout time.Duration
+
 	// ReadBufferSize is the per-connection buffer for reading the request
 	// line and headers, in bytes. Must exceed the largest expected header
 	// (e.g. big Cookie). Defaults to fasthttp's 4096 if zero.
@@ -135,6 +142,20 @@ func (c Config) pathPrefix() string {
 		return c.PathPrefix
 	}
 	return "/api/v1"
+}
+
+func (c Config) shutdownTimeout() time.Duration {
+	if c.ShutdownTimeout > 0 {
+		return c.ShutdownTimeout
+	}
+	return 10 * time.Second
+}
+
+func (c Config) healthTimeout() time.Duration {
+	if c.HealthTimeout > 0 {
+		return c.HealthTimeout
+	}
+	return 5 * time.Second
 }
 
 func (c Config) bodyLimitBytes() int {
@@ -221,6 +242,10 @@ type Component struct {
 	log  Logger
 	name string
 
+	// healthClient probes the built-in /health endpoint; timeout comes
+	// from Config.HealthTimeout.
+	healthClient *http.Client
+
 	// mu guards app and listening across Start/Stop.
 	mu        sync.RWMutex
 	app       *gf.App
@@ -239,9 +264,10 @@ type Component struct {
 // The HTTP server is not started until [Component.Start] is called.
 func New(cfg Config, opts ...Option) *Component {
 	c := &Component{
-		cfg:  cfg,
-		log:  nopLogger{},
-		name: "fiber",
+		cfg:          cfg,
+		log:          nopLogger{},
+		name:         "fiber",
+		healthClient: newHealthClient(cfg.healthTimeout()),
 	}
 	for _, o := range opts {
 		o(c)
@@ -263,11 +289,13 @@ func WithName(name string) Option {
 	return func(c *Component) { c.name = name }
 }
 
-// healthClient is used by [Component.Health] to probe the built-in /health
-// endpoint. A dedicated client with a fixed timeout avoids inheriting
-// http.DefaultClient's no-timeout default, which would block Health
+// newHealthClient builds the client used by [Component.Health] to probe the
+// built-in /health endpoint. A dedicated client with a fixed timeout avoids
+// inheriting http.DefaultClient's no-timeout default, which would block Health
 // indefinitely if the server is wedged and the caller passes context.Background.
-var healthClient = &http.Client{Timeout: 5 * time.Second}
+func newHealthClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout}
+}
 
 // Compile-time assertion: *Component satisfies the samsara component and
 // health-checker interfaces without importing the samsara package.
@@ -373,7 +401,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	// timeout path). This mirrors the rabbitmq/postgresql pattern.
 	go func() {
 		<-ctx.Done()
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stopCtx, cancel := context.WithTimeout(context.Background(), c.cfg.shutdownTimeout())
 		defer cancel()
 		_ = app.ShutdownWithContext(stopCtx)
 	}()
@@ -437,7 +465,7 @@ func (c *Component) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("fiber: health probe: %w", err)
 	}
-	resp, err := healthClient.Do(req)
+	resp, err := c.healthClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("fiber: health probe: %w", err)
 	}

@@ -10,6 +10,18 @@ across all of them.
 
 ## [Unreleased]
 
+### Added
+
+**fiber**
+- `Config.ShutdownTimeout` — bounds the graceful shutdown triggered by
+  samsara context cancellation (previously hardcoded 10 s, still the default).
+- `Config.HealthTimeout` — bounds the `/health` probe HTTP client
+  (previously hardcoded 5 s, still the default).
+
+**grpc**
+- `Config.StopTimeout` — bounds the ctx-cancel graceful stop before the
+  server is force-stopped (previously hardcoded 10 s, still the default).
+
 ### Changed
 
 **postgresql**
