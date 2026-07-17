@@ -50,7 +50,6 @@ import (
 
 	grpclib "google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
@@ -188,12 +187,16 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	copy(extraOpts, c.opts)
 	c.optsMu.RUnlock()
 
-	// Build the full DialOption slice. Insecure transport goes first, then
+	// Build the full DialOption slice. Transport credentials go first
+	// (insecure plaintext by default, TLS when Config.TLS is set), then
 	// config-derived options (message size limits, keepalive), then caller-
 	// supplied options (interceptors, etc.) so callers can override defaults.
-	// TLS is a future cross-cutting addition shared with the server component.
+	creds, err := c.cfg.transportCredentials()
+	if err != nil {
+		return err
+	}
 	base := append(
-		[]grpclib.DialOption{grpclib.WithTransportCredentials(insecure.NewCredentials())},
+		[]grpclib.DialOption{grpclib.WithTransportCredentials(creds)},
 		c.cfg.dialOptions()...,
 	)
 	dialOpts := append(base, extraOpts...)

@@ -198,6 +198,13 @@ sc.Config{
 
     // Shutdown
     StopTimeout time.Duration // graceful stop bound before force-stop; default: 10 s
+
+    // TLS (optional; plaintext when TLS is false)
+    TLS             bool   // default: false
+    TLSCertFile     string // server cert (PEM); required with TLS
+    TLSKeyFile      string // server key (PEM); required with TLS
+    TLSClientCAFile string // enables mTLS when set (client cert CA bundle)
+    TLSMinVersion   string // "1.2" (default) or "1.3"
 }
 ```
 

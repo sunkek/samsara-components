@@ -44,6 +44,19 @@ type Config struct {
 	// MaxConnectionAge is the maximum duration a connection may exist before
 	// it is gracefully closed. Defaults to unlimited (0 = disabled).
 	MaxConnectionAge time.Duration
+
+	// TLS enables TLS on the listener. When false (default) the server
+	// speaks plaintext and all TLS* fields are ignored.
+	TLS bool
+	// TLSCertFile / TLSKeyFile are the server certificate and private key
+	// (PEM). Both required when TLS is true.
+	TLSCertFile string
+	TLSKeyFile  string
+	// TLSClientCAFile, when set, enables mTLS: client certificates are
+	// required and verified against this CA bundle (PEM).
+	TLSClientCAFile string
+	// TLSMinVersion is the minimum TLS version: "1.2" (default) or "1.3".
+	TLSMinVersion string
 }
 
 func (c Config) addr() string {

@@ -34,6 +34,26 @@ type Config struct {
 	// KeepalivePermitWithoutStream allows keepalive pings even when there
 	// are no active RPCs. Defaults to true.
 	KeepalivePermitWithoutStream *bool
+
+	// TLS enables TLS transport credentials. When false (default) the client
+	// dials with insecure (plaintext) credentials and all TLS* fields are
+	// ignored.
+	TLS bool
+	// TLSServerName overrides the server name used for certificate
+	// verification. Defaults to the hostname derived from Target.
+	TLSServerName string
+	// TLSCAFile is a CA bundle (PEM) used to verify the server certificate.
+	// When empty, the system cert pool is used.
+	TLSCAFile string
+	// TLSCertFile / TLSKeyFile are a client certificate and key (PEM) for
+	// mTLS. Both must be set or both empty.
+	TLSCertFile string
+	TLSKeyFile  string
+	// TLSMinVersion is the minimum TLS version: "1.2" (default) or "1.3".
+	TLSMinVersion string
+	// TLSInsecureSkipVerify disables server certificate verification.
+	// Never enable in production.
+	TLSInsecureSkipVerify bool
 }
 
 func (c Config) connectTimeout() time.Duration {

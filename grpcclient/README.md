@@ -124,6 +124,15 @@ sc.Config{
     KeepaliveTime                time.Duration // default: 30 s
     KeepaliveTimeout             time.Duration // default: 10 s
     KeepalivePermitWithoutStream *bool         // default: true
+
+    // TLS (optional; insecure plaintext when TLS is false)
+    TLS                   bool   // default: false
+    TLSServerName         string // override SNI/verification name; default: from Target
+    TLSCAFile             string // CA bundle (PEM); default: system pool
+    TLSCertFile           string // client cert for mTLS (PEM)
+    TLSKeyFile            string // client key for mTLS (PEM)
+    TLSMinVersion         string // "1.2" (default) or "1.3"
+    TLSInsecureSkipVerify bool   // never in production
 }
 ```
 

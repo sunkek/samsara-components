@@ -12,6 +12,15 @@ across all of them.
 
 ### Added
 
+**grpc**
+- TLS support: `Config.TLS`, `TLSCertFile`, `TLSKeyFile`, `TLSClientCAFile`
+  (mTLS), `TLSMinVersion`. Plaintext remains the default.
+
+**grpcclient**
+- TLS support: `Config.TLS`, `TLSServerName`, `TLSCAFile`, `TLSCertFile`/
+  `TLSKeyFile` (mTLS), `TLSMinVersion`, `TLSInsecureSkipVerify`. Insecure
+  plaintext remains the default when `TLS` is unset.
+
 **s3**
 - `Storage` interface — the consumer-facing API (`Upload`, `Download`,
   `Delete`, `DeleteByPrefix`, `ListKeys`, `PresignDownload`, `PresignUpload`).

@@ -207,6 +207,18 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	c.optsMu.RUnlock()
 
 	serverOpts := append(extraOpts, c.cfg.keepaliveOptions()...)
+
+	// Optional TLS on the listener. Errors here are configuration mistakes
+	// (bad paths, malformed PEM) and fail the start.
+	creds, err := c.cfg.tlsCredentials()
+	if err != nil {
+		lnErr := ln.Close()
+		_ = lnErr
+		return err
+	}
+	if creds != nil {
+		serverOpts = append(serverOpts, grpclib.Creds(creds))
+	}
 	srv := grpclib.NewServer(serverOpts...)
 
 	// Register the gRPC health service. This allows orchestrators (Kubernetes
