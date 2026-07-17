@@ -82,6 +82,39 @@ func handler(d amqp.Delivery) error {
 }
 ```
 
+#### Component-managed retries with backoff (delayed retry + terminal DLQ)
+
+For delayed retries with backoff — instead of the broker's immediate
+requeue-in-place — set `SubscribeOptions.Retry`. The component declares two
+extra queues alongside the work queue:
+
+- `<queue>.retry` — a delay queue with no consumers; retried messages sit here
+  with a per-message TTL and dead-letter back into the work queue when it
+  expires;
+- `<queue>.dlq` — the terminal dead-letter queue, populated once `MaxRetries`
+  is exhausted or immediately when the handler returns `ErrDropToDLX`.
+
+```go
+mq.SubscribeWithOptions("events", "work.queue", "work.#", handler,
+    rabbitmq.SubscribeOptions{
+        Retry: &rabbitmq.RetryPolicy{
+            MaxRetries:        5,                      // default 3; negative → straight to DLQ
+            Backoff:           500 * time.Millisecond, // default 1s
+            BackoffMultiplier: 2,                      // default 2 (exponential)
+            MaxBackoff:        time.Minute,            // default 5m
+            // RetryQueue / DLQ override the default names.
+        },
+    },
+)
+```
+
+The attempt counter travels in the `x-retry-count` header
+(`rabbitmq.RetryHeader`). On each failure the component republishes the
+message (with headers, correlation ID, and body preserved) and acks the
+original, so the retry pipeline also works on classic queues and does not
+depend on `x-delivery-limit`. If the republish itself fails, the message is
+nacked with requeue so nothing is lost.
+
 ### Publish
 
 ```go
@@ -166,7 +199,7 @@ rabbitmq.WithName("events-broker")      // override component name
 | `DeclareExchange(name, kind, durable)` | Register an exchange; re-declared on restart |
 | `Subscribe(exchange, queue, handler)` | Bind queue with routing key = queue name |
 | `SubscribeWithKey(exchange, queue, key, handler)` | Bind with explicit routing key |
-| `SubscribeWithOptions(exchange, queue, key, handler, opts)` | Bind, declaring the queue with `QueueArgs`/`QueueType` (DLX, `x-delivery-limit`, quorum) |
+| `SubscribeWithOptions(exchange, queue, key, handler, opts)` | Bind, declaring the queue with `QueueArgs`/`QueueType` (DLX, `x-delivery-limit`, quorum); set `opts.Retry` for component-managed delayed retries + terminal DLQ |
 | `Publish(ctx, exchange, routingKey, contentType, body)` | Publish a message |
 | `PublishWithType(ctx, exchange, routingKey, contentType, messageType, body)` | Publish with AMQP type field |
 | `PublishWithHeaders(ctx, exchange, routingKey, contentType, headers, body)` | Publish with custom AMQP headers |
@@ -188,9 +221,13 @@ Messages are published as `DeliveryMode: Persistent` by default.
 ## Health checking
 
 `*Component` implements `samsara.HealthChecker`. The supervisor polls
-`Health(ctx)` every health interval. Health fails if either the AMQP
-connection or channel is closed — typically indicating a broker-side
-disconnect, which triggers a restart.
+`Health(ctx)` every health interval. Health fails if:
+
+- any consumer goroutine died while the component was running (the broker
+  cancelled the consumer or closed its delivery channel) — the restart
+  re-binds all subscriptions and clears the condition; or
+- the AMQP connection or channel is closed — typically indicating a
+  broker-side disconnect.
 
 ---
 

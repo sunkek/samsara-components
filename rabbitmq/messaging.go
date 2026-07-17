@@ -48,6 +48,103 @@ type SubscribeOptions struct {
 	// overrides any "x-queue-type" present in QueueArgs. Quorum queues are
 	// required for broker-enforced "x-delivery-limit".
 	QueueType string
+
+	// Retry enables the component-managed delayed-retry pipeline for this
+	// subscription. When nil, handler errors keep the legacy behaviour
+	// (nack with requeue=true, or requeue=false for [ErrDropToDLX]).
+	Retry *RetryPolicy
+}
+
+// RetryHeader is the AMQP header carrying the current attempt number on a
+// message travelling through the retry pipeline. The first delivery has no
+// header; the first retry carries int32(1), and so on.
+const RetryHeader = "x-retry-count"
+
+// RetryPolicy configures the component-managed retry pipeline used by
+// [Component.SubscribeWithOptions] when [SubscribeOptions.Retry] is set.
+//
+// For a work queue "q" the component declares two companion queues:
+//
+//   - "q.retry" — the delay queue. Failed messages are republished here with a
+//     per-message expiration equal to the backoff for the current attempt.
+//     When the TTL fires, the broker dead-letters the message back to "q"
+//     through the default exchange, producing a delayed retry.
+//   - "q.dlq" — the terminal dead-letter queue. Messages land here after
+//     MaxRetries attempts are exhausted, or immediately when the handler
+//     returns [ErrDropToDLX].
+//
+// All zero-value fields fall back to documented defaults, mirroring [Config].
+type RetryPolicy struct {
+	// MaxRetries is the number of retries after the initial delivery.
+	// Defaults to 3. Negative values mean no retries (straight to the DLQ).
+	MaxRetries int
+
+	// Backoff is the delay before the first retry. Defaults to 1 s.
+	Backoff time.Duration
+
+	// BackoffMultiplier scales the delay for each subsequent retry
+	// (exponential backoff). Defaults to 2. Values < 1 are treated as 1
+	// (constant backoff).
+	BackoffMultiplier float64
+
+	// MaxBackoff caps the per-retry delay. Defaults to 5 min.
+	MaxBackoff time.Duration
+
+	// RetryQueue overrides the delay queue name. Defaults to queue + ".retry".
+	RetryQueue string
+
+	// DLQ overrides the terminal dead-letter queue name.
+	// Defaults to queue + ".dlq".
+	DLQ string
+}
+
+func (p RetryPolicy) maxRetries() int {
+	if p.MaxRetries != 0 {
+		return max(p.MaxRetries, 0)
+	}
+	return 3
+}
+
+func (p RetryPolicy) retryQueue(queue string) string {
+	if p.RetryQueue != "" {
+		return p.RetryQueue
+	}
+	return queue + ".retry"
+}
+
+func (p RetryPolicy) dlq(queue string) string {
+	if p.DLQ != "" {
+		return p.DLQ
+	}
+	return queue + ".dlq"
+}
+
+// backoff returns the delay before retry number attempt (1-based).
+func (p RetryPolicy) backoff(attempt int) time.Duration {
+	base := p.Backoff
+	if base <= 0 {
+		base = time.Second
+	}
+	mult := p.BackoffMultiplier
+	if mult < 1 {
+		if mult == 0 {
+			mult = 2
+		} else {
+			mult = 1
+		}
+	}
+	maxB := p.MaxBackoff
+	if maxB <= 0 {
+		maxB = 5 * time.Minute
+	}
+	d := float64(base)
+	for i := 1; i < attempt; i++ {
+		d *= mult
+		if d >= float64(maxB) {
+			return maxB
+		}
+	}
+	return min(time.Duration(d), maxB)
 }
 
 // subscription describes a queue binding and its message handler.
@@ -58,6 +155,7 @@ type subscription struct {
 	exchange   string
 	queue      string
 	queueArgs  amqp.Table
+	retry      *RetryPolicy
 	handler    func(amqp.Delivery) error
 }
 
@@ -119,6 +217,7 @@ func (c *Component) SubscribeWithOptions(exchange, queue, routingKey string, han
 		queue:      queue,
 		routingKey: routingKey,
 		queueArgs:  buildQueueArgs(opts),
+		retry:      opts.Retry,
 		handler:    handler,
 	}
 
@@ -230,9 +329,51 @@ func buildQueueArgs(opts SubscribeOptions) amqp.Table {
 	return args
 }
 
+// declareRetryTopology declares the delay queue and terminal DLQ for a
+// subscription with a retry policy. The delay queue dead-letters expired
+// messages back to the work queue through the default exchange.
+func (c *Component) declareRetryTopology(ch *amqp.Channel, sub subscription) error {
+	retryQueue := sub.retry.retryQueue(sub.queue)
+	if _, err := ch.QueueDeclare(
+		retryQueue,
+		true,  // durable
+		false, // autoDelete
+		false, // exclusive
+		false, // noWait
+		amqp.Table{
+			"x-dead-letter-exchange":    "", // default exchange
+			"x-dead-letter-routing-key": sub.queue,
+		},
+	); err != nil {
+		return fmt.Errorf("rabbitmq: declare retry queue %q: %w", retryQueue, err)
+	}
+
+	dlq := sub.retry.dlq(sub.queue)
+	if _, err := ch.QueueDeclare(
+		dlq,
+		true,  // durable
+		false, // autoDelete
+		false, // exclusive
+		false, // noWait
+		nil,
+	); err != nil {
+		return fmt.Errorf("rabbitmq: declare dead-letter queue %q: %w", dlq, err)
+	}
+
+	c.log.Debug("rabbitmq: retry topology declared",
+		"queue", sub.queue, "retryQueue", retryQueue, "dlq", dlq)
+	return nil
+}
+
 // bindAndConsume declares the queue, binds it to the exchange with the given
 // routing key, and starts a consumer goroutine that exits when ctx is cancelled.
 func (c *Component) bindAndConsume(ctx context.Context, ch *amqp.Channel, sub subscription) error {
+	if sub.retry != nil {
+		if err := c.declareRetryTopology(ch, sub); err != nil {
+			return err
+		}
+	}
+
 	if _, err := ch.QueueDeclare(
 		sub.queue,
 		true,  // durable
@@ -276,22 +417,23 @@ func (c *Component) bindAndConsume(ctx context.Context, ch *amqp.Channel, sub su
 				return
 			case d, ok := <-msgs:
 				if !ok {
-					// Broker closed the delivery channel (connection drop etc.).
-					// The health check detects this and the supervisor triggers
-					// a restart, which re-binds this consumer.
-					c.log.Warn("rabbitmq: delivery channel closed", "queue", sub.queue)
+					// Broker closed the delivery channel (connection drop,
+					// consumer cancel, queue deletion). If the component is
+					// still running this consumer is silently dead — record it
+					// so Health reports unhealthy and the supervisor restarts
+					// the component, re-binding this consumer.
+					select {
+					case <-ctx.Done():
+						// Normal shutdown/restart — not a failure.
+					default:
+						c.log.Error("rabbitmq: delivery channel closed while running",
+							"queue", sub.queue)
+						c.markConsumerDead(sub.queue, "delivery channel closed by broker")
+					}
 					return
 				}
 				if err := sub.handler(d); err != nil {
-					// Default: requeue in place. If the handler signals
-					// ErrDropToDLX, nack with requeue=false so a queue-level
-					// dead-letter-exchange policy fires instead.
-					requeue := !errors.Is(err, ErrDropToDLX)
-					c.log.Error("rabbitmq: handler error — nacking",
-						"queue", sub.queue, "requeue", requeue, "error", err)
-					if nackErr := d.Nack(false, requeue); nackErr != nil {
-						c.log.Error("rabbitmq: nack failed", "queue", sub.queue, "error", nackErr)
-					}
+					c.handleFailure(ctx, sub, d, err)
 				} else {
 					if ackErr := d.Ack(false); ackErr != nil {
 						c.log.Error("rabbitmq: ack failed", "queue", sub.queue, "error", ackErr)
@@ -303,4 +445,110 @@ func (c *Component) bindAndConsume(ctx context.Context, ch *amqp.Channel, sub su
 
 	c.log.Debug("rabbitmq: consumer bound", "queue", sub.queue, "exchange", sub.exchange)
 	return nil
+}
+
+// handleFailure applies the failure policy for a delivery whose handler
+// returned a non-nil error.
+//
+// Without a retry policy, the legacy behaviour applies: nack with
+// requeue=true, or requeue=false when the handler signals [ErrDropToDLX].
+//
+// With a retry policy, the component republishes the message to the delay
+// queue with a per-message expiration (delayed retry) until MaxRetries is
+// exhausted, then moves it to the terminal DLQ. [ErrDropToDLX] short-circuits
+// straight to the DLQ.
+func (c *Component) handleFailure(ctx context.Context, sub subscription, d amqp.Delivery, handlerErr error) {
+	if sub.retry == nil {
+		requeue := !errors.Is(handlerErr, ErrDropToDLX)
+		c.log.Error("rabbitmq: handler error — nacking",
+			"queue", sub.queue, "requeue", requeue, "error", handlerErr)
+		if nackErr := d.Nack(false, requeue); nackErr != nil {
+			c.log.Error("rabbitmq: nack failed", "queue", sub.queue, "error", nackErr)
+		}
+		return
+	}
+
+	policy := sub.retry
+	attempt := retryCount(d.Headers) // retries already performed
+	drop := errors.Is(handlerErr, ErrDropToDLX)
+
+	if drop || attempt >= policy.maxRetries() {
+		// Terminal: move to the DLQ and ack the original.
+		dlq := policy.dlq(sub.queue)
+		c.log.Error("rabbitmq: handler error — dead-lettering",
+			"queue", sub.queue, "dlq", dlq, "attempts", attempt+1,
+			"dropRequested", drop, "error", handlerErr)
+		if err := c.republish(ctx, d, "", dlq, attempt, 0); err != nil {
+			// Could not persist to the DLQ; keep the message in the work
+			// queue rather than losing it.
+			c.log.Error("rabbitmq: dead-letter publish failed — requeueing",
+				"queue", sub.queue, "dlq", dlq, "error", err)
+			if nackErr := d.Nack(false, true); nackErr != nil {
+				c.log.Error("rabbitmq: nack failed", "queue", sub.queue, "error", nackErr)
+			}
+			return
+		}
+	} else {
+		// Delayed retry via the TTL queue.
+		delay := policy.backoff(attempt + 1)
+		retryQueue := policy.retryQueue(sub.queue)
+		c.log.Warn("rabbitmq: handler error — scheduling retry",
+			"queue", sub.queue, "attempt", attempt+1, "maxRetries", policy.maxRetries(),
+			"delay", delay, "error", handlerErr)
+		if err := c.republish(ctx, d, "", retryQueue, attempt+1, delay); err != nil {
+			c.log.Error("rabbitmq: retry publish failed — requeueing",
+				"queue", sub.queue, "retryQueue", retryQueue, "error", err)
+			if nackErr := d.Nack(false, true); nackErr != nil {
+				c.log.Error("rabbitmq: nack failed", "queue", sub.queue, "error", nackErr)
+			}
+			return
+		}
+	}
+
+	if ackErr := d.Ack(false); ackErr != nil {
+		c.log.Error("rabbitmq: ack after republish failed", "queue", sub.queue, "error", ackErr)
+	}
+}
+
+// republish clones a delivery to exchange/routingKey, stamping the retry
+// counter header and, when expiration > 0, a per-message TTL.
+func (c *Component) republish(ctx context.Context, d amqp.Delivery, exchange, routingKey string, retries int, expiration time.Duration) error {
+	headers := amqp.Table{}
+	maps.Copy(headers, d.Headers)
+	headers[RetryHeader] = int32(retries)
+
+	msg := amqp.Publishing{
+		Headers:       headers,
+		ContentType:   d.ContentType,
+		DeliveryMode:  amqp.Persistent,
+		CorrelationId: d.CorrelationId,
+		MessageId:     d.MessageId,
+		Timestamp:     d.Timestamp,
+		Type:          d.Type,
+		AppId:         d.AppId,
+		Body:          d.Body,
+	}
+	if expiration > 0 {
+		msg.Expiration = fmt.Sprintf("%d", expiration.Milliseconds())
+	}
+	return c.publish(ctx, exchange, routingKey, msg)
+}
+
+// retryCount extracts the retry counter from message headers, tolerating the
+// integer widths different AMQP clients use.
+func retryCount(headers amqp.Table) int {
+	v, ok := headers[RetryHeader]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case int32:
+		return int(n)
+	case int64:
+		return int(n)
+	case int:
+		return n
+	default:
+		return 0
+	}
 }

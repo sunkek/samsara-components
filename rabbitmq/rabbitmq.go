@@ -160,6 +160,13 @@ type Component struct {
 	// subsMu guards subscriptions similarly.
 	subsMu sync.RWMutex
 	subs   []subscription
+
+	// consMu guards deadConsumers, which maps queue name to the reason a
+	// consumer goroutine exited while the component was still running.
+	// Health reports unhealthy while this map is non-empty; it is reset on
+	// every Start so a supervisor restart clears the condition.
+	consMu        sync.Mutex
+	deadConsumers map[string]string
 }
 
 // New creates a Component from the supplied config.
@@ -304,13 +311,30 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	copy(subs, c.subs)
 	c.subsMu.RUnlock()
 
+	// Reset consumer-liveness tracking for this run; consumers recorded dead
+	// in a previous run are re-bound below.
+	c.consMu.Lock()
+	c.deadConsumers = make(map[string]string)
+	c.consMu.Unlock()
+
 	for _, sub := range subs {
-		if err := c.bindAndConsume(ctx, ch, sub); err != nil {
-			// A failed subscription is logged but not fatal — the component
-			// can still publish and other subscriptions still work. The health
-			// check will surface problems via the channel state.
+		if err := c.bindAndConsume(runCtx, ch, sub); err != nil {
+			// A subscription that fails to bind means the component would
+			// silently never consume from that queue. Fail Start so the
+			// supervisor's restart policy kicks in instead of running degraded.
 			c.log.Error("rabbitmq: subscription failed",
 				"exchange", sub.exchange, "queue", sub.queue, "error", err)
+			runCancel()
+			c.mu.Lock()
+			c.conn = nil
+			c.ch = nil
+			c.runCtx = nil
+			c.runCancel = nil
+			c.mu.Unlock()
+			_ = ch.Close()
+			_ = conn.Close()
+			return fmt.Errorf("rabbitmq: bind subscription (exchange %q, queue %q): %w",
+				sub.exchange, sub.queue, err)
 		}
 	}
 
@@ -389,8 +413,19 @@ func (c *Component) Stop(ctx context.Context) error {
 }
 
 // Health implements samsara.HealthChecker.
-// Returns a non-nil error if the connection or channel is closed.
+// Returns a non-nil error if the connection or channel is closed, or if any
+// consumer goroutine has died while the component is still running (e.g. the
+// broker cancelled the consumer or closed its delivery channel). A failing
+// health check lets the supervisor restart the component, which re-binds all
+// subscriptions.
 func (c *Component) Health(_ context.Context) error {
+	c.consMu.Lock()
+	for queue, reason := range c.deadConsumers {
+		c.consMu.Unlock()
+		return fmt.Errorf("rabbitmq: consumer for queue %q is dead: %s", queue, reason)
+	}
+	c.consMu.Unlock()
+
 	c.mu.RLock()
 	conn := c.conn
 	ch := c.ch
@@ -402,7 +437,19 @@ func (c *Component) Health(_ context.Context) error {
 	if ch == nil || ch.IsClosed() {
 		return fmt.Errorf("rabbitmq: channel is closed")
 	}
+
 	return nil
+}
+
+// markConsumerDead records that the consumer for queue exited while the
+// component was still running, so Health reports unhealthy.
+func (c *Component) markConsumerDead(queue, reason string) {
+	c.consMu.Lock()
+	if c.deadConsumers == nil {
+		c.deadConsumers = make(map[string]string)
+	}
+	c.deadConsumers[queue] = reason
+	c.consMu.Unlock()
 }
 
 // isAlreadyClosed reports whether err is the amqp "Exception (504)" error
