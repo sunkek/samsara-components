@@ -13,6 +13,14 @@ Cloudflare R2, SeaweedFS, and others.
 go get github.com/sunkek/samsara-components/s3
 ```
 
+Domain adapters should depend on the `s3.Storage` interface rather than
+`*s3.Component` — it covers all storage operations and keeps adapters
+testable with a fake:
+
+```go
+type AvatarRepo struct { store s3.Storage }
+```
+
 ---
 
 ## Usage

@@ -12,6 +12,11 @@ across all of them.
 
 ### Added
 
+**s3**
+- `Storage` interface — the consumer-facing API (`Upload`, `Download`,
+  `Delete`, `DeleteByPrefix`, `ListKeys`, `PresignDownload`, `PresignUpload`).
+  `*Component` satisfies it; adapters should depend on `Storage`.
+
 **fiber**
 - `Config.ShutdownTimeout` — bounds the graceful shutdown triggered by
   samsara context cancellation (previously hardcoded 10 s, still the default).
