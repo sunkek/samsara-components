@@ -246,10 +246,16 @@ type Component struct {
 	// from Config.HealthTimeout.
 	healthClient *http.Client
 
-	// mu guards app and listening across Start/Stop.
+	// mu guards app, listening and stopCh across Start/Stop.
 	mu        sync.RWMutex
 	app       *gf.App
 	listening bool
+
+	// stopCh signals the ctx-watcher goroutine that Stop ran, so it does
+	// not linger across restarts. Initialised in New so Stop-before-Start
+	// is safe; re-made on each Start (same pattern as grpc/postgresql/
+	// redis/s3).
+	stopCh chan struct{}
 
 	// routes holds RegisterFuncs to be called during Start.
 	routesMu sync.RWMutex
@@ -268,6 +274,7 @@ func New(cfg Config, opts ...Option) *Component {
 		log:          nopLogger{},
 		name:         "fiber",
 		healthClient: newHealthClient(cfg.healthTimeout()),
+		stopCh:       make(chan struct{}), // initialised so Stop-before-Start is safe
 	}
 	for _, o := range opts {
 		o(c)
@@ -391,19 +398,28 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	}
 
 	// Store app before Listen so Stop can call ShutdownWithContext even if
-	// ctx is cancelled between now and the OnListen hook firing.
+	// ctx is cancelled between now and the OnListen hook firing. Allocate a
+	// fresh stopCh for this run so a previous Stop signal does not bleed
+	// into the new run.
 	c.mu.Lock()
 	c.app = app
+	c.stopCh = make(chan struct{})
+	stopCh := c.stopCh
 	c.mu.Unlock()
 
 	// Watch ctx so a samsara context cancellation triggers a graceful
 	// shutdown even if Stop is not called explicitly (e.g. supervisor
-	// timeout path). This mirrors the rabbitmq/postgresql pattern.
+	// timeout path). This mirrors the rabbitmq/postgresql pattern. The
+	// stopCh branch lets the goroutine exit promptly when Stop already
+	// handled shutdown, so it does not outlive the run.
 	go func() {
-		<-ctx.Done()
-		stopCtx, cancel := context.WithTimeout(context.Background(), c.cfg.shutdownTimeout())
-		defer cancel()
-		_ = app.ShutdownWithContext(stopCtx)
+		select {
+		case <-ctx.Done():
+			stopCtx, cancel := context.WithTimeout(context.Background(), c.cfg.shutdownTimeout())
+			defer cancel()
+			_ = app.ShutdownWithContext(stopCtx)
+		case <-stopCh:
+		}
 	}()
 
 	// Fiber's OnListen hook fires after the TCP socket is bound, before the
@@ -436,9 +452,15 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 // Stop gracefully shuts down the HTTP server, draining in-flight requests
 // within the context deadline.
 func (c *Component) Stop(ctx context.Context) error {
-	c.mu.RLock()
+	c.mu.Lock()
 	app := c.app
-	c.mu.RUnlock()
+	select {
+	case <-c.stopCh:
+		// already closed (repeated Stop)
+	default:
+		close(c.stopCh)
+	}
+	c.mu.Unlock()
 
 	if app == nil {
 		return nil // Stop called before Start — nothing to do
