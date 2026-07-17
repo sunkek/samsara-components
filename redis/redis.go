@@ -99,13 +99,17 @@ func (c Config) connectTimeout() time.Duration {
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
 type Logger interface {
+	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
 }
 
 type nopLogger struct{}
 
+func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Info(string, ...any)  {}
+func (nopLogger) Warn(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
 
 // Component is a samsara-compatible Redis component.
@@ -195,7 +199,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 		return err
 	}
 	if tlsCfg != nil && tlsCfg.InsecureSkipVerify {
-		c.log.Info("redis: TLS certificate verification disabled (InsecureSkipVerify=true)", "addr", c.cfg.addr())
+		c.log.Warn("redis: TLS certificate verification disabled (InsecureSkipVerify=true)", "addr", c.cfg.addr())
 	}
 
 	opts := &redis.Options{
@@ -266,7 +270,7 @@ func (c *Component) Stop(ctx context.Context) error {
 		}
 		return nil
 	case <-ctx.Done():
-		c.log.Error("redis: client close timed out during shutdown")
+		c.log.Warn("redis: client close timed out during shutdown")
 		return nil
 	}
 }

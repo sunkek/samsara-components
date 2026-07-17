@@ -188,13 +188,17 @@ func (c Config) errorHandler() gf.ErrorHandler {
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
 type Logger interface {
+	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
 }
 
 type nopLogger struct{}
 
+func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Info(string, ...any)  {}
+func (nopLogger) Warn(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
 
 // RegisterFunc is a callback that receives the root [gf.Router] (scoped to

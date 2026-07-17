@@ -10,6 +10,15 @@ across all of them.
 
 ## [Unreleased]
 
+### Changed
+
+**all components**
+- **Breaking:** every component's local `Logger` interface is now the identical
+  four-method set `Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`.
+  Consumer logger adapters missing `Debug` or `Warn` must add them.
+  Non-fatal conditions (close/stop timeouts, TLS verification disabled) are
+  now logged at `Warn` instead of `Error`/`Info`.
+
 ---
 
 ## rabbitmq/v0.2.0 — 2026-06-21

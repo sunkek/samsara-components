@@ -172,6 +172,7 @@ func TestConfig_EmptyTarget_FailsOnStart(t *testing.T) {
 
 type testLogger struct{ t *testing.T }
 
+func (l *testLogger) Debug(msg string, args ...any) { l.t.Log(append([]any{"DEBUG", msg}, args...)...) }
 func (l *testLogger) Info(msg string, args ...any) {
 	l.t.Log(append([]any{"INFO ", msg}, args...)...)
 }

@@ -123,10 +123,10 @@ type exchangeDecl struct {
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
 type Logger interface {
+	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
-	Debug(msg string, args ...any)
 }
 
 type nopLogger struct{}
@@ -383,7 +383,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	select {
 	case <-done:
 	case <-ctx.Done():
-		c.log.Error("rabbitmq: close timed out during shutdown")
+		c.log.Warn("rabbitmq: close timed out during shutdown")
 	}
 	return nil
 }

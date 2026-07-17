@@ -104,13 +104,17 @@ func (c Config) connectTimeout() time.Duration {
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
 type Logger interface {
+	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
 }
 
 type nopLogger struct{}
 
+func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Info(string, ...any)  {}
+func (nopLogger) Warn(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
 
 // Component is a samsara-compatible PostgreSQL component.
@@ -272,7 +276,7 @@ func (c *Component) Stop(ctx context.Context) error {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			c.log.Error("postgres: pool close timed out during shutdown")
+			c.log.Warn("postgres: pool close timed out during shutdown")
 		}
 	}
 	return nil

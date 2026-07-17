@@ -61,13 +61,17 @@ type RegisterFunc func(s *grpclib.Server)
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
 type Logger interface {
+	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
 }
 
 type nopLogger struct{}
 
+func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Info(string, ...any)  {}
+func (nopLogger) Warn(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
 
 // Component is a samsara-compatible gRPC server component.
@@ -279,7 +283,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 				select {
 				case <-done:
 				case <-time.After(10 * time.Second):
-					c.log.Error("grpc: ctx-cancel graceful stop timed out, forcing stop")
+					c.log.Warn("grpc: ctx-cancel graceful stop timed out, forcing stop")
 					srv2.Stop()
 					<-done
 				}
@@ -359,7 +363,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	case <-done:
 	case <-ctx.Done():
 		// Deadline exceeded — force-stop to avoid blocking the supervisor.
-		c.log.Error("grpc: graceful stop timed out, forcing stop")
+		c.log.Warn("grpc: graceful stop timed out, forcing stop")
 		srv.Stop()
 		<-done
 	}
