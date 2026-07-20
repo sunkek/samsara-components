@@ -10,9 +10,18 @@ across all of them.
 
 ## [Unreleased]
 
-### Added
+---
 
-**prometheus**
+> **Release note (all modules below, 2026-07-20):** every component's local
+> `Logger` interface is now the identical four-method set
+> `Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`. **Breaking:**
+> consumer logger adapters missing `Debug` or `Warn` must add them. Non-fatal
+> conditions (close/stop timeouts, TLS verification disabled) are now logged
+> at `Warn` instead of `Error`/`Info`.
+
+## prometheus/v0.1.0 — 2026-07-20
+
+### Added
 - New module: Prometheus metrics component. `Component` serves the
   exposition format over HTTP (default `:2112/metrics`) with the standard
   samsara lifecycle (`Start`/`Stop`/`Health`), and `Observer()` returns a
@@ -22,7 +31,9 @@ across all of them.
   and process collectors are on by default
   (`Config.DisableRuntimeCollectors` to opt out).
 
-**rabbitmq**
+## rabbitmq/v0.3.0 — 2026-07-20
+
+### Added
 - `SubscribeOptions.Retry` (`*RetryPolicy`) — component-managed retry
   pipeline: delayed retries via a TTL delay queue (`<queue>.retry`) with
   configurable `MaxRetries`, `Backoff`, `BackoffMultiplier`, `MaxBackoff`,
@@ -34,59 +45,65 @@ across all of them.
   while the component is running (broker-cancelled consumer or closed
   delivery channel), not just when the connection/channel is closed.
 
-**grpc**
-- TLS support: `Config.TLS`, `TLSCertFile`, `TLSKeyFile`, `TLSClientCAFile`
-  (mTLS), `TLSMinVersion`. Plaintext remains the default.
-
-**grpcclient**
-- TLS support: `Config.TLS`, `TLSServerName`, `TLSCAFile`, `TLSCertFile`/
-  `TLSKeyFile` (mTLS), `TLSMinVersion`, `TLSInsecureSkipVerify`. Insecure
-  plaintext remains the default when `TLS` is unset.
-
-**s3**
-- `Storage` interface — the consumer-facing API (`Upload`, `Download`,
-  `Delete`, `DeleteByPrefix`, `ListKeys`, `PresignDownload`, `PresignUpload`).
-  `*Component` satisfies it; adapters should depend on `Storage`.
-
-**fiber**
-- `Config.ShutdownTimeout` — bounds the graceful shutdown triggered by
-  samsara context cancellation (previously hardcoded 10 s, still the default).
-- `Config.HealthTimeout` — bounds the `/health` probe HTTP client
-  (previously hardcoded 5 s, still the default).
-
-**grpc**
-- `Config.StopTimeout` — bounds the ctx-cancel graceful stop before the
-  server is force-stopped (previously hardcoded 10 s, still the default).
-
 ### Fixed
-
-**rabbitmq**
 - `Start` no longer swallows subscription bind failures: a queue that fails
   to declare/bind/consume now fails `Start` (so the supervisor restart
   policy applies) instead of leaving the component running without that
   consumer. Consumer goroutines that exit unexpectedly are logged and
   surfaced through `Health()`.
 
+## fiber/v0.4.0 — 2026-07-20
+
+### Added
+- `Config.ShutdownTimeout` — bounds the graceful shutdown triggered by
+  samsara context cancellation (previously hardcoded 10 s, still the default).
+- `Config.HealthTimeout` — bounds the `/health` probe HTTP client
+  (previously hardcoded 5 s, still the default).
+
 ### Changed
+- Lifecycle converged on the stopCh pattern used by the other components;
+  the ctx-watcher goroutine no longer lingers across restarts.
 
-**postgresql**
-- **Breaking:** default component `Name()` changed from `"postgres"` to
-  `"postgresql"` to match the module name. Update
-  `samsara.WithDependencies("postgres")` references, or pin the old name
-  with `WithName("postgres")`.
+## grpc/v0.2.0 — 2026-07-20
 
-**grpcclient**
+### Added
+- TLS support: `Config.TLS`, `TLSCertFile`, `TLSKeyFile`, `TLSClientCAFile`
+  (mTLS), `TLSMinVersion`. Plaintext remains the default.
+- `Config.StopTimeout` — bounds the ctx-cancel graceful stop before the
+  server is force-stopped (previously hardcoded 10 s, still the default).
+
+## grpcclient/v0.2.0 — 2026-07-20
+
+### Added
+- TLS support: `Config.TLS`, `TLSServerName`, `TLSCAFile`, `TLSCertFile`/
+  `TLSKeyFile` (mTLS), `TLSMinVersion`, `TLSInsecureSkipVerify`. Insecure
+  plaintext remains the default when `TLS` is unset.
+
+### Changed
 - **Breaking:** default component `Name()` changed from `"grpc-client"` to
   `"grpcclient"` to match the module name. Update
   `samsara.WithDependencies("grpc-client")` references, or pin the old name
   with `WithName("grpc-client")`.
 
-**all components**
-- **Breaking:** every component's local `Logger` interface is now the identical
-  four-method set `Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`.
-  Consumer logger adapters missing `Debug` or `Warn` must add them.
-  Non-fatal conditions (close/stop timeouts, TLS verification disabled) are
-  now logged at `Warn` instead of `Error`/`Info`.
+## postgresql/v0.2.0 — 2026-07-20
+
+### Changed
+- **Breaking:** default component `Name()` changed from `"postgres"` to
+  `"postgresql"` to match the module name. Update
+  `samsara.WithDependencies("postgres")` references, or pin the old name
+  with `WithName("postgres")`.
+
+## redis/v0.4.0 — 2026-07-20
+
+### Changed
+- Unified `Logger` interface (see release note above).
+
+## s3/v0.2.0 — 2026-07-20
+
+### Added
+- `Storage` interface — the consumer-facing API (`Upload`, `Download`,
+  `Delete`, `DeleteByPrefix`, `ListKeys`, `PresignDownload`, `PresignUpload`).
+  `*Component` satisfies it; adapters should depend on `Storage`.
 
 ---
 
