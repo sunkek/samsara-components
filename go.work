@@ -5,6 +5,7 @@ use (
     ./grpc
     ./grpcclient
     ./postgresql
+    ./prometheus
     ./rabbitmq
     ./redis
     ./s3

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `samsara-components` is a Go workspace monorepo of lifecycle-managed infrastructure components for the [samsara](https://github.com/sunkek/samsara) runtime. Each component implements the samsara lifecycle interface (`Start`, `Stop`, `Health`) and is an independent Go module.
 
-**Modules:** `fiber/`, `grpc/`, `grpcclient/`, `postgresql/`, `rabbitmq/`, `redis/`, `s3/`
+**Modules:** `fiber/`, `grpc/`, `grpcclient/`, `postgresql/`, `prometheus/`, `rabbitmq/`, `redis/`, `s3/`
 
 ## Commands
 

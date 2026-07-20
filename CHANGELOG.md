@@ -12,6 +12,28 @@ across all of them.
 
 ### Added
 
+**prometheus**
+- New module: Prometheus metrics component. `Component` serves the
+  exposition format over HTTP (default `:2112/metrics`) with the standard
+  samsara lifecycle (`Start`/`Stop`/`Health`), and `Observer()` returns a
+  `samsara.MetricsObserver`-compatible bridge that exports supervisor
+  telemetry (component up/down, restarts, health-check latency) into the
+  same registry. Application metrics register via `Registry()`. Go runtime
+  and process collectors are on by default
+  (`Config.DisableRuntimeCollectors` to opt out).
+
+**rabbitmq**
+- `SubscribeOptions.Retry` (`*RetryPolicy`) — component-managed retry
+  pipeline: delayed retries via a TTL delay queue (`<queue>.retry`) with
+  configurable `MaxRetries`, `Backoff`, `BackoffMultiplier`, `MaxBackoff`,
+  and a terminal dead-letter queue (`<queue>.dlq`) once retries are
+  exhausted or the handler returns `ErrDropToDLX`. Queue names overridable
+  via `RetryQueue`/`DLQ`. The attempt counter travels in the
+  `x-retry-count` header (`RetryHeader`).
+- `Health()` now reports unhealthy when a consumer goroutine has died
+  while the component is running (broker-cancelled consumer or closed
+  delivery channel), not just when the connection/channel is closed.
+
 **grpc**
 - TLS support: `Config.TLS`, `TLSCertFile`, `TLSKeyFile`, `TLSClientCAFile`
   (mTLS), `TLSMinVersion`. Plaintext remains the default.
@@ -35,6 +57,15 @@ across all of them.
 **grpc**
 - `Config.StopTimeout` — bounds the ctx-cancel graceful stop before the
   server is force-stopped (previously hardcoded 10 s, still the default).
+
+### Fixed
+
+**rabbitmq**
+- `Start` no longer swallows subscription bind failures: a queue that fails
+  to declare/bind/consume now fails `Start` (so the supervisor restart
+  policy applies) instead of leaving the component running without that
+  consumer. Consumer goroutines that exit unexpectedly are logged and
+  surfaced through `Health()`.
 
 ### Changed
 

@@ -17,6 +17,7 @@ Each component is an independent Go module. Import only what you need.
 | [`grpc`](./grpc) | `github.com/sunkek/samsara-components/grpc` | gRPC server with health, reflection, and interceptor support |
 | [`grpcclient`](./grpcclient) | `github.com/sunkek/samsara-components/grpcclient` | gRPC client with lifecycle management and interceptor support |
 | [`postgresql`](./postgresql) | `github.com/sunkek/samsara-components/postgresql` | PostgreSQL connection pool via pgx/v5 |
+| [`prometheus`](./prometheus) | `github.com/sunkek/samsara-components/prometheus` | Prometheus metrics endpoint + supervisor telemetry observer |
 | [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
 | [`redis`](./redis) | `github.com/sunkek/samsara-components/redis` | Redis client |
 | [`s3`](./s3) | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
@@ -32,6 +33,7 @@ import (
     "github.com/sunkek/samsara-components/grpc"
     "github.com/sunkek/samsara-components/grpcclient"
     "github.com/sunkek/samsara-components/postgresql"
+    "github.com/sunkek/samsara-components/prometheus"
     "github.com/sunkek/samsara-components/rabbitmq"
     "github.com/sunkek/samsara-components/redis"
     "github.com/sunkek/samsara-components/s3"
@@ -39,7 +41,10 @@ import (
 )
 
 func main() {
-    sup := samsara.NewSupervisor()
+    metricsObs := prometheus.New(prometheus.Config{Port: 2112})
+    sup := samsara.NewSupervisor(
+        samsara.WithMetricsObserver(metricsObs.Observer()),
+    )
 
     db := postgresql.New(postgresql.Config{
         Host: "localhost",
@@ -78,6 +83,8 @@ func main() {
         samsara.WithTier(samsara.TierSignificant),
         samsara.WithRestartPolicy(samsara.AlwaysRestart(5*time.Second)),
     )
+
+    sup.Add(metricsObs, samsara.WithTier(samsara.TierAuxiliary))
 
     rest := fiber.New(fiber.Config{
         Host:       "0.0.0.0",
