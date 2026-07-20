@@ -21,6 +21,7 @@ Each component is an independent Go module. Import only what you need.
 | [`rabbitmq`](./rabbitmq) | `github.com/sunkek/samsara-components/rabbitmq` | RabbitMQ consumer/publisher |
 | [`redis`](./redis) | `github.com/sunkek/samsara-components/redis` | Redis client |
 | [`s3`](./s3) | `github.com/sunkek/samsara-components/s3` | S3-compatible object storage |
+| [`sqlite`](./sqlite) | `github.com/sunkek/samsara-components/sqlite` | Embedded SQLite database via pure-Go modernc.org/sqlite |
 
 ---
 

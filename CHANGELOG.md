@@ -12,6 +12,28 @@ across all of them.
 
 ---
 
+## sqlite/v0.1.0 — 2026-07-20
+
+### Added
+- New module: embedded SQLite component backed by the pure-Go
+  `modernc.org/sqlite` driver, so consumers keep building with
+  `CGO_ENABLED=0`. Standard samsara lifecycle (`Start`/`Stop`/`Health`) plus
+  a `DB` interface (`Select`/`Get`/`Exec`/`BeginTx`/`CommitTx`) whose
+  signatures mirror the `postgresql` module, so adapters can move between the
+  two. Scanning via `scany/v2/sqlscan`.
+- `Start` verifies rather than assumes: it creates parent directories, pings,
+  and confirms the requested `journal_mode` actually engaged — SQLite silently
+  falls back to a rollback journal when WAL is unavailable (notably on network
+  filesystems), which the component now treats as a startup failure instead of
+  letting it surface later as unexplained `SQLITE_BUSY`.
+- `Health` runs `SELECT 1` rather than a ping, since `database/sql` can satisfy
+  a ping from a pooled connection whose underlying file has been deleted.
+- Defaults chosen for correctness over throughput: `MaxOpenConns` is 1 (writes
+  queue in the pool instead of racing for the SQLite write lock),
+  `foreign_keys` is ON (bare SQLite defaults it off), `journal_mode` is WAL,
+  `synchronous` is NORMAL. Pragmas are applied via DSN `_pragma` parameters so
+  they cover every pooled connection, not just the first.
+
 > **Release note (all modules below, 2026-07-20):** every component's local
 > `Logger` interface is now the identical four-method set
 > `Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`. **Breaking:**

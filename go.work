@@ -9,4 +9,5 @@ use (
     ./rabbitmq
     ./redis
     ./s3
+    ./sqlite
 )
