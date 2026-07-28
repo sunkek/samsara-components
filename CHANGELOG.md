@@ -12,6 +12,22 @@ across all of them.
 
 ---
 
+## redis/v0.5.0 — 2026-07-28
+
+### Added
+- `Incr(ctx, key) (int64, error)` — atomic `INCR`. A missing key counts as 0, so
+  the first call returns 1, which is the signal callers use to arm a window TTL
+  exactly once (`Incr`, then `Expire` when the result is 1). This makes a
+  fixed-window counter — rate limits, quotas — expressible in one round trip and
+  correct across replicas; `SetNX` alone could only claim, not count.
+
+### Changed
+- **Breaking for custom `Client` implementations:** the new method is part of
+  the `Client` interface, so hand-written fakes and mocks must add it.
+  `*Component` satisfies it; consumers depending on `Client` need no change.
+
+---
+
 ## sqlite/v0.1.0 — 2026-07-20
 
 ### Added

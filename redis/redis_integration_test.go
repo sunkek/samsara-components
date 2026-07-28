@@ -375,6 +375,94 @@ func TestIntegration_Expire_TTL(t *testing.T) {
 	}
 }
 
+func TestIntegration_Incr(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "incr")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	// A missing key counts as 0, so the first increment returns 1 — the signal
+	// callers use to arm a fixed-window TTL exactly once.
+	n, err := comp.Incr(ctx, key)
+	if err != nil {
+		t.Fatalf("Incr: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("first Incr = %d, want 1", n)
+	}
+
+	if _, err := comp.Expire(ctx, key, time.Minute); err != nil {
+		t.Fatalf("Expire: %v", err)
+	}
+
+	if n, err = comp.Incr(ctx, key); err != nil || n != 2 {
+		t.Fatalf("second Incr = %d, %v; want 2, nil", n, err)
+	}
+
+	// Incrementing must not clear the window TTL set after the first call.
+	ttl, err := comp.TTL(ctx, key)
+	if err != nil {
+		t.Fatalf("TTL: %v", err)
+	}
+	if ttl <= 0 {
+		t.Fatalf("TTL lost after Incr: %v", ttl)
+	}
+}
+
+func TestIntegration_Incr_Concurrent(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "incr-concurrent")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	// Every concurrent caller must observe a distinct value: no two requests
+	// may share a slot, or a rate limiter built on Incr would over-admit.
+	const n = 50
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		seen = make(map[int64]bool, n)
+	)
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v, err := comp.Incr(ctx, key)
+			if err != nil {
+				t.Errorf("Incr: %v", err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if seen[v] {
+				t.Errorf("duplicate Incr result %d", v)
+			}
+			seen[v] = true
+		}()
+	}
+	wg.Wait()
+
+	if len(seen) != n {
+		t.Fatalf("got %d distinct values, want %d", len(seen), n)
+	}
+}
+
+func TestIntegration_Incr_NotInteger(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+	key := uniqueKey(t, "incr-badtype")
+	t.Cleanup(func() { _, _ = comp.Del(context.Background(), key) })
+
+	_ = comp.Set(ctx, key, "not-a-number", 0)
+
+	if _, err := comp.Incr(ctx, key); err == nil {
+		t.Fatal("expected error incrementing a non-integer value")
+	}
+}
+
 func TestIntegration_Scan(t *testing.T) {
 	comp := testComp(t)
 	startComp(t, comp)

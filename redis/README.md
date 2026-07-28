@@ -117,6 +117,7 @@ redis.WithName("session-store")     // override component name
 | `Get(ctx, key)` | Retrieve a string value; returns `ErrNil` if absent |
 | `Del(ctx, keys...)` | Delete one or more keys; returns count removed |
 | `Exists(ctx, keys...)` | Count how many of the given keys exist |
+| `Incr(ctx, key)` | Atomically increment an integer; first call returns 1 |
 | `Expire(ctx, key, ttl)` | Set a TTL on an existing key |
 | `TTL(ctx, key)` | Get remaining TTL; negative if absent or no expiry |
 | `Scan(ctx, pattern)` | Iterate all matching keys safely (cursor-based) |

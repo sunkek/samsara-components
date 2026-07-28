@@ -36,6 +36,18 @@ type Client interface {
 	// Exists reports how many of the given keys exist.
 	Exists(ctx context.Context, keys ...string) (int64, error)
 
+	// Incr atomically increments the integer stored at key by one and returns
+	// the new value. A missing key counts as 0, so the first Incr returns 1 —
+	// use that to arm the window TTL exactly once when building a fixed-window
+	// counter (rate limits, quotas):
+	//
+	//	n, err := c.Incr(ctx, key)
+	//	if n == 1 { c.Expire(ctx, key, window) }
+	//	if n > max { /* limit exceeded */ }
+	//
+	// Returns an error if the value at key is not an integer.
+	Incr(ctx context.Context, key string) (int64, error)
+
 	// Expire sets a timeout on key. Returns true if the timeout was set.
 	Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
 
@@ -132,6 +144,22 @@ func (c *Component) Exists(ctx context.Context, keys ...string) (int64, error) {
 	n, err := client.Exists(ctx, keys...).Result()
 	if err != nil {
 		return 0, fmt.Errorf("redis exists: %w", err)
+	}
+	return n, nil
+}
+
+// Incr atomically increments the integer at key by one and returns the new
+// value. A missing key is treated as 0, so the first call returns 1 — callers
+// building a fixed-window counter can use that to set the window TTL exactly
+// once (Incr, then Expire when the result is 1).
+func (c *Component) Incr(ctx context.Context, key string) (int64, error) {
+	client := c.getClient()
+	if client == nil {
+		return 0, ErrNotReady
+	}
+	n, err := client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, fmt.Errorf("redis incr %q: %w", key, err)
 	}
 	return n, nil
 }
