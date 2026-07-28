@@ -306,3 +306,50 @@ type notFoundErr struct{}
 
 func (e *notFoundErr) Error() string   { return "resource not found" }
 func (e *notFoundErr) StatusCode() int { return http.StatusNotFound }
+
+// A path-scoped Use must not disable the other global middleware. Before Use kept
+// one group per call, every registered middleware was flattened into a single
+// app.Use, where Fiber reads a string argument as the path prefix for all handlers
+// in that call — so registering one static file at a path silently re-scoped an
+// auth middleware to that path and served the rest of the API unguarded.
+func TestIntegration_Use_PathScopedCallDoesNotUnscopeOthers(t *testing.T) {
+	srv, base := testSrv(t)
+
+	// A global guard, plus a path-scoped handler registered in a separate call.
+	srv.Use(func(c gf.Ctx) error {
+		if c.Get("X-Token") == "" {
+			return c.SendStatus(http.StatusUnauthorized)
+		}
+		return c.Next()
+	})
+	srv.Use("/docs/file.json", func(c gf.Ctx) error {
+		return c.SendString("{}")
+	})
+	srv.Register(func(r gf.Router) {
+		r.Get("/protected", func(c gf.Ctx) error { return c.SendString("secret") })
+	})
+
+	startSrv(t, srv)
+
+	// Unauthenticated: the guard must still apply.
+	resp, err := http.Get(base + "/protected")
+	if err != nil {
+		t.Fatalf("GET /protected: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("guard did not apply: got %d, want 401 — a path-scoped Use unscoped the global middleware", resp.StatusCode)
+	}
+
+	// With the header it passes through.
+	req, _ := http.NewRequest("GET", base+"/protected", nil)
+	req.Header.Set("X-Token", "yes")
+	authed, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /protected with token: %v", err)
+	}
+	defer authed.Body.Close()
+	if authed.StatusCode != http.StatusOK {
+		t.Fatalf("authenticated request: got %d, want 200", authed.StatusCode)
+	}
+}

@@ -35,8 +35,21 @@ func (c *Component) Register(fn RegisterFunc) {
 // Example:
 //
 //	srv.Use(authMiddleware, tracingMiddleware)
+//
+// Each call is stored as its own group and replayed as its own app.Use call at
+// Start. Flattening them into one slice would be a security bug, not just a
+// cosmetic one: fiber's Use treats a string argument as the path prefix for every
+// handler in that call, so a single path-scoped Use — Use("/docs/x", static) —
+// would silently re-scope every other global middleware (auth, audit, tracing) to
+// that one path, leaving the rest of the API unguarded.
 func (c *Component) Use(args ...any) {
+	if len(args) == 0 {
+		return
+	}
+	group := make([]any, len(args))
+	copy(group, args)
+
 	c.middlewareMu.Lock()
-	c.middleware = append(c.middleware, args...)
+	c.middleware = append(c.middleware, group)
 	c.middlewareMu.Unlock()
 }

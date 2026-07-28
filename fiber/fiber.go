@@ -261,9 +261,10 @@ type Component struct {
 	routesMu sync.RWMutex
 	routes   []RegisterFunc
 
-	// middleware holds Use() calls to apply before domain routes.
 	middlewareMu sync.RWMutex
-	middleware   []any
+	// middleware holds one entry per Use() call, each replayed as its own
+	// app.Use — see Use for why they must not be flattened together.
+	middleware [][]any
 }
 
 // New creates a Component from the supplied config.
@@ -361,12 +362,14 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	// Applied before domain routes but after built-in middleware, so callers
 	// can inject auth, tracing, etc. that wraps all domain handlers.
 	c.middlewareMu.RLock()
-	mw := make([]any, len(c.middleware))
+	mw := make([][]any, len(c.middleware))
 	copy(mw, c.middleware)
 	c.middlewareMu.RUnlock()
 
-	if len(mw) > 0 {
-		app.Use(mw...)
+	// One app.Use per original call, so a path argument in one call cannot leak
+	// into another and re-scope it.
+	for _, group := range mw {
+		app.Use(group...)
 	}
 
 	// ── Root group (PathPrefix) ────────────────────────────────────────────

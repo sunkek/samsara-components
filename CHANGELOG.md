@@ -12,6 +12,28 @@ across all of them.
 
 ---
 
+## fiber/v0.5.0 — 2026-07-28
+
+### Fixed
+- **Security: a path-scoped `Use` call silently unscoped every other global
+  middleware.** `Use` appended each call's arguments into one flat slice, and
+  Start replayed them as a single `app.Use(...)`. Fiber reads a string argument
+  there as the path prefix for **all** handlers in that call, so one
+  `Use("/docs/file.json", static)` re-scoped auth, audit and tracing middleware to
+  that single path — every other route was served unguarded and unaudited, with no
+  error anywhere. `Use` now stores one group per call and Start replays each
+  group as its own `app.Use`, so a path argument cannot leak between calls.
+
+  **Impact:** any consumer that registered a path-scoped `Use` alongside global
+  middleware. Auth and audit middleware registered via `Use` did not run for any
+  route outside that path. Upgrade and verify that an unauthenticated request to a
+  protected route is rejected.
+
+### Changed
+- **Internal only:** the stored middleware field is now `[][]any` (one entry per
+  `Use` call). The public `Use(args ...any)` signature is unchanged; an empty
+  `Use()` is now a no-op rather than a zero-argument group.
+
 ## redis/v0.5.0 — 2026-07-28
 
 ### Added
