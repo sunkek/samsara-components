@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # One entry covering all nine component modules. Each module has its own
+  # go.mod/go.sum, so Dependabot treats them independently and opens a separate
+  # grouped PR per module — a bump to, say, pgx never touches the s3 module.
+  - package-ecosystem: gomod
+    directories:
+      - /fiber
+      - /grpc
+      - /grpcclient
+      - /postgresql
+      - /prometheus
+      - /rabbitmq
+      - /redis
+      - /s3
+      - /sqlite
+    schedule:
+      interval: weekly
+    groups:
+      go-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
