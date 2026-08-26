@@ -63,7 +63,8 @@ settled, and the reasons are not visible in the code:
 
 Run `make` targets rather than ad hoc `go` commands, so results match CI. The
 `Makefile` lists them; `make check` before pushing, `make test-all` before
-opening a PR. `make lint` installs `staticcheck` if it is missing.
+opening a PR. `make check` gates on `gofmt` too, and `make fmt` fixes drift.
+`make lint` installs `staticcheck` if it is missing.
 
 Integration tests need the Docker services in `docker-compose.yml`;
 `make test-integration` brings them up and down around the run.

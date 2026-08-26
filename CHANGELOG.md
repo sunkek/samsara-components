@@ -18,6 +18,8 @@ across all of them.
   contract was only asserted in `fiber`.
 - `CONTEXT.md` (shared vocabulary) and `docs/adr/` (the first three decision
   records).
+- `make fmt-check` and `make fmt`, with `fmt-check` wired into `make check` and
+  CI — formatting drift previously reached `main` unnoticed (#6).
 
 ### Fixed
 - Compile-time interface assertions were missing in `postgresql` and `redis`;

@@ -18,6 +18,9 @@ jobs:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
 
+      - name: Gofmt
+        run: make fmt-check
+
       - name: Vet
         run: |
           for mod in $(find . -name go.mod -not -path './.git/*' | xargs -I{} dirname {}); do

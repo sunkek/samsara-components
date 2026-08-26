@@ -3,10 +3,11 @@
 # Targets:
 #   make test              — unit tests only (no Docker required)
 #   make test-race         — unit tests with race detector
+#   make fmt-check         — fail on any gofmt drift across all modules
 #   make vet               — go vet across all modules
 #   make lint              — staticcheck across all modules
 #   make coverage          — unit tests with coverage report
-#   make check             — vet + lint + test-race (run before pushing)
+#   make check             — fmt-check + vet + lint + test-race (run before pushing)
 #   make infra-up          — start Docker Compose services
 #   make infra-down        — stop and remove containers
 #   make test-integration  — start infra, run integration tests, stop infra
@@ -20,6 +21,21 @@ UNIT_TIMEOUT        ?= 60s
 COUNT               ?= 3
 
 # ── Static analysis ───────────────────────────────────────────────────────────
+
+.PHONY: fmt-check
+fmt-check:
+	@drift=$$(gofmt -l $(MODULES)); \
+	if [ -n "$$drift" ]; then \
+		echo "▶ gofmt drift:"; \
+		echo "$$drift" | sed 's/^/  /'; \
+		echo "run 'make fmt' to fix"; \
+		exit 1; \
+	fi
+	@echo "▶ gofmt: clean"
+
+.PHONY: fmt
+fmt:
+	@gofmt -w $(MODULES)
 
 .PHONY: vet
 vet:
@@ -37,7 +53,7 @@ lint:
 	done
 
 .PHONY: check
-check: vet lint test-race
+check: fmt-check vet lint test-race
 
 # ── Unit tests ────────────────────────────────────────────────────────────────
 
