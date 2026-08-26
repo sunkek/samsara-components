@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/georgysavva/scany/v2 v2.1.4
-	modernc.org/sqlite v1.56.0
+	modernc.org/sqlite v1.57.0
 )
 
 require (
