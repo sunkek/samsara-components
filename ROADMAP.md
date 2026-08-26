@@ -12,12 +12,20 @@ self-restart).
 Line references are against the current `main`. Priority: s3 first (prod impact),
 then cross-cutting, then per-component.
 
+**Status markers.** An item carries a `Status:` line once its state has been
+verified against the code. Items with no marker were not re-verified in the last
+pass — treat them as unconfirmed rather than open.
+
 ---
 
 ## Cross-cutting
 
 ### X1. No metrics / OpenTelemetry in any component
-Observability is limited to a 2-method `Info`/`Error` logger. No component exports
+**Status: open** (premise corrected 2026-08-26 — every module declares a
+4-method `Logger`: `Debug`/`Info`/`Warn`/`Error`, not a 2-method one. The
+observability gap below is unaffected.)
+
+Observability is limited to a per-component `Logger`. No component exports
 request counts, latencies, pool stats, or spans. Consumers can't see connection-pool
 saturation, per-op latency, or error rates without wrapping every call themselves.
 **Direction.** Optional metrics hook per component (or a shared helper) emitting
@@ -36,6 +44,12 @@ port that pattern to fiber/postgresql/redis/s3 so callers can pass native driver
 options without a wrapper change.
 
 ### X4. Ship a concrete `samsara.MetricsObserver` implementation
+**Status: shipped** in `prometheus/v0.1.0` (2026-07-20). `prometheus.Observer`
+exports component up / starts / restarts / stop-errors / health-check-duration /
+health-check-failures, and wiring is the single
+`samsara.WithMetricsObserver(comp.Observer())` call this item asked for. Kept
+here for the record; nothing further to do.
+
 (Moved from the samsara core ROADMAP — C1. Belongs here, not in core: core is
 single-package zero-dependency and must not pull a Prometheus/OTel client.)
 The `samsara.MetricsObserver` interface exists with only a nop default, so every
@@ -53,6 +67,9 @@ telemetry via the core's observer hook.
 ## s3 (highest priority — caused prod incident)
 
 ### S1. `Upload` buffers the entire body into RAM
+**Status: open** — tracked as
+[#4](https://github.com/sunkek/samsara-components/issues/4).
+
 `Upload` does `io.ReadAll(r.Body)` and wraps it in a `bytes.Reader`
 (`s3/operations.go:88`) for every upload — no streaming, no multipart path. Under
 concurrent large uploads the consuming gateway spiked to full-body-size RAM per
@@ -84,15 +101,21 @@ connectivity.
 ## redis
 
 ### R1. `Client` interface is too thin for anything beyond simple KV
-The interface (`redis/client.go:17`) exposes 8 ops — `Set`, `SetNX`, `Get`, `Del`,
-`Exists`, `Expire`, `TTL`, `Scan`. No `INCR`/`DECR`, no pipelines, no Lua `EVAL`, no
+**Status: partly shipped.** The atomic-counter half landed in `redis/v0.5.0`
+(2026-07-28): `Incr` plus `Expire`-on-first is exactly the `INCR`+`EXPIRE`
+pattern the rate limiter needed, and `SetNX` landed earlier for locks and
+idempotency keys. What remains open is everything below except `INCR`.
+
+The interface (`redis/client.go:17`) exposes 9 ops — `Set`, `SetNX`, `Get`, `Del`,
+`Exists`, `Incr`, `Expire`, `TTL`, `Scan`. No `DECR`, no pipelines, no Lua `EVAL`, no
 pub/sub, no hashes/sets/zsets/streams, no `MSET`/`MGET`, and no `*redis.Client`
-accessor. **Concrete downstream cost:** the consuming gateway's rate limiter cannot
-express an atomic `INCR`+`EXPIRE` and falls back to a racy read-modify-write `Set`
-(gateway `internal/component/ratelimit/ratelimit.go:112`). `SetNX` (added recently)
-helps locks/idempotency but is not enough for counters. **Direction.** Add `Incr`/
-`IncrBy` + `Expire`-on-first (or a Lua helper), and/or export `Client() *redis.Client`
-for advanced use.
+accessor. **Historical downstream cost (now resolved):** the consuming gateway's rate
+limiter could not express an atomic `INCR`+`EXPIRE` and fell back to a racy
+read-modify-write `Set` (gateway
+`internal/component/ratelimit/ratelimit.go:112`). `Incr` closed that.
+**Direction for the remainder.** Add `DecrBy`/`IncrBy`, pipelines, or a Lua
+helper as concrete needs appear, and/or export `Client() *redis.Client` for
+advanced use.
 
 ### R2. No cluster / sentinel / failover support
 `Start` builds a plain `redis.NewClient` (`redis/redis.go:212`); `Config` has no
@@ -178,12 +201,13 @@ exists:
   never flips readiness. A generic outbound-HTTP component (base URL, auth injection,
   status→error mapping, health check, restart policy) would be broadly reusable.
 - **Rate limiter** — Redis-backed limiter with tiers + fail-open. (gateway
-  `internal/component/ratelimit/*`) Blocked in part on redis R1 (atomic counters).
+  `internal/component/ratelimit/*`) No longer blocked: `redis.Incr` plus
+  `Expire`-on-first landed in `redis/v0.5.0`.
 
 ---
 
 ## Notes on current state
 The reviewed gateway, after upgrading, pins current releases: `s3` v0.1.5 (the
 `Stop` stale-client race is fixed there — not an open item), `redis` v0.3.0 (has
-`SetNX`), `fiber` v0.3.0, `postgresql` v0.1.1. The `rabbitmq`, `grpc`, and
+`SetNX`; `Incr` arrived later in v0.5.0), `fiber` v0.3.0, `postgresql` v0.1.1. The `rabbitmq`, `grpc`, and
 `grpcclient` components exist but were not exercised by this review.
