@@ -14,6 +14,6 @@ buys them nothing they asked for.
 
 - A major driver release is a breaking change for the component's callers, not
   just for the component.
-- Tests that need a seam use the narrow interfaces the components accept
-  (`postgresql.DB` and `TxFinaliser`, and their `sqlite` equivalents) rather
-  than faking the driver.
+- Tests that need a seam use the narrow interface each component declares
+  (`postgresql.DB`, `sqlite.DB`, `redis.Client`, `s3.Storage`,
+  `rabbitmq.Publisher`) rather than faking the driver.

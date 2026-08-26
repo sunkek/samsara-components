@@ -10,6 +10,21 @@ across all of them.
 
 ## [Unreleased]
 
+### Added
+- **`rabbitmq.Publisher`** — the interface domain adapters should depend on,
+  matching `postgresql.DB`, `sqlite.DB`, `redis.Client`, and `s3.Storage`.
+  Publish-only by design: subscription setup is wiring, not a domain concern.
+- `TestConfig_ZeroValueNoPanic` in every module — the zero-value `Config`
+  contract was only asserted in `fiber`.
+- `CONTEXT.md` (shared vocabulary) and `docs/adr/` (the first three decision
+  records).
+
+### Fixed
+- Compile-time interface assertions were missing in `postgresql` and `redis`;
+  `s3` and `sqlite` already had them.
+- `CONTRIBUTING.md`'s repository tree omitted `prometheus/`, `sqlite/`, and
+  `s3/storage.go`; `AGENTS.md`'s module list omitted `prometheus` and `sqlite`.
+
 ---
 
 ## fiber/v0.5.0 — 2026-07-28

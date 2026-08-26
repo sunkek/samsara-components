@@ -41,14 +41,19 @@ settled, and the reasons are not visible in the code:
   default. `Option` carries dependencies and identity (`WithLogger`,
   `WithName`); `fiber.WithSwagger` is the one tunable that arrived as an
   `Option`, and it stays the exception.
-- **Zero value works:** `Config{}` produces a usable component. Seven of the
-  nine assert this in a unit test; `grpcclient` and `sqlite` do not yet.
+- **Zero value works:** `Config{}` produces a usable component, and every
+  module has a `TestConfig_ZeroValueNoPanic` asserting it. A new module adds
+  one.
 - **Errors:** wrap with a tag and the operation —
   `fmt.Errorf("rabbitmq: declare exchange %q: %w", name, err)`. The tag is the
   module name, except `postgresql`, which tags `postgres:`.
 - **Boilerplate stays identical:** the nine copies of `Logger`, `nopLogger`,
   `Option`, `WithLogger`, and `WithName` are copied verbatim, so the nine stay
   diffable. Change one and change all nine the same way.
+- **Depend on the seam, not the component:** the caller-facing surface is
+  declared as an interface — `postgresql.DB`, `sqlite.DB`, `redis.Client`,
+  `s3.Storage`, `rabbitmq.Publisher` — with a `var _ Iface = (*Component)(nil)`
+  assertion beside it. A new operation goes on both.
 - **Doc comments:** every exported identifier. State the pre-`Start` behaviour
   when a method is callable before `Start`.
 - **Import the runtime nowhere.** Components satisfy samsara's interfaces

@@ -60,6 +60,9 @@ type Client interface {
 	Scan(ctx context.Context, pattern string) ([]string, error)
 }
 
+// Compile-time assertion: *Component satisfies Client.
+var _ Client = (*Component)(nil)
+
 // ErrNil is returned by [Client.Get] when the key does not exist.
 // Use errors.Is(err, redis.ErrNil) to check.
 var ErrNil = redis.Nil

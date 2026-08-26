@@ -143,3 +143,20 @@ func (l *testLogger) Debug(msg string, args ...any) { l.t.Log(append([]any{"DEBU
 func (l *testLogger) Info(msg string, args ...any)  { l.t.Log(append([]any{"INFO ", msg}, args...)...) }
 func (l *testLogger) Warn(msg string, args ...any)  { l.t.Log(append([]any{"WARN ", msg}, args...)...) }
 func (l *testLogger) Error(msg string, args ...any) { l.t.Log(append([]any{"ERROR", msg}, args...)...) }
+
+// ----------------------------------------------------------------------------
+// Config
+// ----------------------------------------------------------------------------
+
+// A zero-value Config must produce a usable component: every default is
+// supplied by an unexported accessor at the point of use, so New never needs a
+// populated Config.
+func TestConfig_ZeroValueNoPanic(t *testing.T) {
+	c := s3.New(s3.Config{})
+	if c == nil {
+		t.Fatal("expected non-nil component")
+	}
+	if c.Name() == "" {
+		t.Error("expected a default name")
+	}
+}

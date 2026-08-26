@@ -41,6 +41,11 @@ samsara-components/
 │   ├── db.go                # query API (Select, Get, Exec, transactions)
 │   ├── postgresql_test.go              # unit tests (no database required)
 │   └── postgresql_integration_test.go  # integration tests (//go:build integration)
+├── prometheus/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/prometheus
+│   ├── prometheus.go        # component lifecycle (Start, Stop, Health), metrics endpoint
+│   ├── observer.go          # Observer — supervisor telemetry into a registry
+│   └── prometheus_test.go   # unit tests (no scrape target required)
 ├── rabbitmq/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/rabbitmq
 │   ├── rabbitmq.go          # component lifecycle (Start, Stop, Health)
@@ -56,10 +61,21 @@ samsara-components/
 ├── s3/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/s3
 │   ├── s3.go                # component lifecycle (Start, Stop, Health)
+│   ├── storage.go           # Storage interface (the seam adapters depend on)
 │   ├── operations.go        # Upload/Download/Delete/ListKeys/Presign operations
 │   ├── internal.go          # credential provider, HTTP error classification
 │   ├── s3_test.go              # unit tests (no S3 endpoint required)
 │   └── s3_integration_test.go  # integration tests (//go:build integration)
+├── sqlite/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/sqlite
+│   ├── sqlite.go            # component lifecycle (Start, Stop, Health)
+│   ├── config.go            # Config, DSN construction, pool sizing
+│   ├── db.go                # DB interface, query API, transactions
+│   ├── sqlite_test.go              # unit tests (temp-file and in-memory databases)
+│   └── sqlite_integration_test.go  # integration tests (//go:build integration)
+├── docs/adr/                # architecture decision records
+├── CONTEXT.md               # glossary — the vocabulary all modules share
+├── AGENTS.md                # working guide (agents and humans alike)
 ├── scripts/
 │   └── seaweedfs-s3.json    # static credentials config for SeaweedFS integration tests
 ├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ, SeaweedFS)

@@ -245,6 +245,29 @@ func (c *Component) SubscribeWithOptions(exchange, queue, routingKey string, han
 	return c.bindAndConsume(runCtx, ch, sub)
 }
 
+// Publisher is the interface that domain adapters should depend on.
+// *Component satisfies it; depend on Publisher rather than *Component to keep
+// adapters testable without a real broker.
+//
+//	type OrderEvents struct { mq rabbitmq.Publisher }
+//
+// Subscription setup (DeclareExchange, Subscribe) is wiring, not a domain
+// concern, so it stays off this interface.
+type Publisher interface {
+	// Publish sends a message to the given exchange with the given routing key.
+	// See [Component.Publish].
+	Publish(ctx context.Context, exchange, routingKey string, contentType ContentType, body []byte) error
+
+	// PublishWithType also sets the AMQP message type field.
+	PublishWithType(ctx context.Context, exchange, routingKey string, contentType ContentType, messageType string, body []byte) error
+
+	// PublishWithHeaders stamps the given AMQP headers on the message.
+	PublishWithHeaders(ctx context.Context, exchange, routingKey string, contentType ContentType, headers amqp.Table, body []byte) error
+}
+
+// Compile-time assertion: *Component satisfies Publisher.
+var _ Publisher = (*Component)(nil)
+
 // Publish sends a message to the given exchange with the given routing key.
 // It respects ctx for cancellation and uses the configured PublishTimeout
 // as a per-attempt deadline.
