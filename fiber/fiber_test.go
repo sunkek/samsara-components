@@ -152,4 +152,3 @@ func (l *testLogger) Debug(msg string, args ...any) { l.t.Log(append([]any{"DEBU
 func (l *testLogger) Info(msg string, args ...any)  { l.t.Log(append([]any{"INFO ", msg}, args...)...) }
 func (l *testLogger) Warn(msg string, args ...any)  { l.t.Log(append([]any{"WARN ", msg}, args...)...) }
 func (l *testLogger) Error(msg string, args ...any) { l.t.Log(append([]any{"ERROR", msg}, args...)...) }
-
