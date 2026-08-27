@@ -64,7 +64,11 @@ settled, and the reasons are not visible in the code:
 Run `make` targets rather than ad hoc `go` commands, so results match CI. The
 `Makefile` lists them; `make check` before pushing, `make test-all` before
 opening a PR. `make check` gates on `gofmt` too, and `make fmt` fixes drift.
-`make lint` installs `staticcheck` if it is missing.
+`make lint` installs `staticcheck` if it is missing, and `make vuln` installs
+`govulncheck`. `make coverage-check` compares each module against
+`scripts/coverage-baseline.txt` and fails on a drop of more than 2 points; if a
+change moves the numbers in either direction, run `make coverage-update` and
+commit the file.
 
 Integration tests need the Docker services in `docker-compose.yml`;
 `make test-integration` brings them up and down around the run.

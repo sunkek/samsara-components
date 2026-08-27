@@ -6,7 +6,10 @@
 #   make fmt-check         — fail on any gofmt drift across all modules
 #   make vet               — go vet across all modules
 #   make lint              — staticcheck across all modules
+#   make vuln              — govulncheck across all modules
 #   make coverage          — unit tests with coverage report
+#   make coverage-check    — fail if any module drops below its recorded baseline
+#   make coverage-update   — rewrite the baseline from the current numbers
 #   make check             — fmt-check + vet + lint + test-race (run before pushing)
 #   make infra-up          — start Docker Compose services
 #   make infra-down        — stop and remove containers
@@ -15,6 +18,9 @@
 #   make tidy              — go mod tidy across all modules
 
 MODULES := $(shell find . -name go.mod -not -path './.git/*' | xargs -I{} dirname {})
+
+COVERAGE_BASELINE   ?= scripts/coverage-baseline.txt
+COVERAGE_TOLERANCE  ?= 2.0
 
 INTEGRATION_TIMEOUT ?= 120s
 UNIT_TIMEOUT        ?= 60s
@@ -52,6 +58,16 @@ lint:
 		(cd $$mod && staticcheck ./...); \
 	done
 
+# govulncheck fails only on advisories whose vulnerable symbols this code calls;
+# an advisory in a required-but-uncalled module is reported without failing.
+.PHONY: vuln
+vuln:
+	@which govulncheck > /dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+	@for mod in $(MODULES); do \
+		echo "▶ govulncheck: $$mod"; \
+		(cd $$mod && govulncheck ./...); \
+	done
+
 .PHONY: check
 check: fmt-check vet lint test-race
 
@@ -78,6 +94,42 @@ coverage:
 		(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... && \
 			go tool cover -func=coverage.out | tail -1); \
 	done
+
+.PHONY: coverage-check
+coverage-check:
+	@fail=0; \
+	for mod in $(MODULES); do \
+		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
+		base=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$2}'); \
+		if [ -z "$$base" ]; then \
+			echo "▶ coverage: $$mod $$pct% — no baseline; run 'make coverage-update'"; \
+			fail=1; \
+			continue; \
+		fi; \
+		if awk "BEGIN{exit !($$pct < $$base - $(COVERAGE_TOLERANCE))}"; then \
+			echo "▶ coverage: $$mod $$pct% — DOWN from baseline $$base%"; \
+			fail=1; \
+		else \
+			echo "▶ coverage: $$mod $$pct% (baseline $$base%)"; \
+		fi; \
+	done; \
+	if [ $$fail -ne 0 ]; then \
+		echo "coverage dropped more than $(COVERAGE_TOLERANCE) points; add tests or run 'make coverage-update'"; \
+		exit 1; \
+	fi
+
+.PHONY: coverage-update
+coverage-update:
+	@tmp=$$(mktemp); \
+	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
+	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
+		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
+		echo "$$mod $$pct" >> $$tmp; \
+	done; \
+	mv $$tmp $(COVERAGE_BASELINE); \
+	echo "▶ baseline written to $(COVERAGE_BASELINE)"
 
 # ── Integration tests ─────────────────────────────────────────────────────────
 

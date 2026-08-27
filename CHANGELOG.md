@@ -20,6 +20,12 @@ across all of them.
   records).
 - `make fmt-check` and `make fmt`, with `fmt-check` wired into `make check` and
   CI — formatting drift previously reached `main` unnoticed (#6).
+- `make vuln` (`govulncheck` per module) and a CI job running it — nine
+  dependency trees had nothing checking pinned versions against published
+  advisories (#7).
+- `scripts/coverage-baseline.txt` with `make coverage-check` and
+  `make coverage-update`, wired into CI: per-module coverage now has a recorded
+  floor, so a drop is visible instead of silent (#8).
 - `s3.Config.UploadPartSize` (default 8 MiB, floor 5 MiB) and
   `s3.Config.UploadConcurrency` (default 5) — the memory/throughput trade-off
   for uploads is now tunable.

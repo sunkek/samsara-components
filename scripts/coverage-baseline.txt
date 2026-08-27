@@ -1,0 +1,18 @@
+# Per-module unit-test coverage baseline (no Docker; integration tests excluded).
+#
+# Regenerate with: make coverage-update
+# Enforced by:     make coverage-check, which fails when a module drops more
+#                  than COVERAGE_TOLERANCE (default 2.0) points below its line.
+#
+# Low numbers are not automatically a gap: fiber, grpc, and s3 keep most of
+# their behaviour behind a live server or endpoint, so it is reachable only
+# under -tags integration. A number that *falls* is the signal to act on.
+./fiber 27.9
+./grpc 29.2
+./grpcclient 61.5
+./postgresql 65.4
+./prometheus 81.5
+./rabbitmq 49.5
+./redis 57.4
+./s3 26.1
+./sqlite 84.6

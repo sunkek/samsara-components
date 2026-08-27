@@ -77,6 +77,8 @@ samsara-components/
 ├── CONTEXT.md               # glossary — the vocabulary all modules share
 ├── AGENTS.md                # working guide (agents and humans alike)
 ├── scripts/
+│   ├── coverage-baseline.txt # per-module coverage floor, enforced by make coverage-check
+│   ├── seaweedfs-init.sh    # creates the test bucket once SeaweedFS is healthy
 │   └── seaweedfs-s3.json    # static credentials config for SeaweedFS integration tests
 ├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ, SeaweedFS)
 └── Makefile
@@ -113,11 +115,30 @@ make test-all       # starts infra, runs all tests, stops infra
 Every PR must pass:
 
 ```bash
-make check          # go vet + staticcheck + unit tests with race detector
-make test-all       # unit + integration
+make check           # gofmt + go vet + staticcheck + unit tests with race detector
+make test-all        # unit + integration
+make coverage-check  # per-module coverage against the recorded baseline
+make vuln            # govulncheck across all modules
 ```
 
-The CI pipeline enforces both. PRs that fail CI will not be merged.
+The CI pipeline enforces all four. PRs that fail CI will not be merged.
+
+### Coverage baseline
+
+`scripts/coverage-baseline.txt` records each module's unit-test coverage.
+`make coverage-check` fails when a module falls more than 2 points below its
+line; CI runs it on every PR. If a change legitimately moves the numbers —
+including upwards — run `make coverage-update` and commit the new file.
+
+Absolute values differ widely by design: `fiber`, `grpc`, and `s3` keep most of
+their behaviour behind a live server or endpoint, reachable only under
+`-tags integration`. Treat a *drop* as the signal, not a low number.
+
+### Vulnerability scanning
+
+`make vuln` runs `govulncheck` per module. It fails only on advisories whose
+vulnerable symbols this code actually calls, so an unfixable advisory in a
+required-but-uncalled module reports without blocking unrelated PRs.
 
 ### Quality expectations
 
