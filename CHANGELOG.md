@@ -12,7 +12,7 @@ across all of them.
 
 ### Added
 - **`rabbitmq.Publisher`** — the interface domain adapters should depend on,
-  matching `postgresql.DB`, `sqlite.DB`, `redis.Client`, and `s3.Storage`.
+  matching `postgresql.DB`, `sqlite.DB`, `redis.KV`, and `s3.Storage`.
   Publish-only by design: subscription setup is wiring, not a domain concern.
 - `TestConfig_ZeroValueNoPanic` in every module — the zero-value `Config`
   contract was only asserted in `fiber`.
@@ -36,10 +36,20 @@ across all of them.
   returns nil outside the started lifecycle and is documented as the route to
   driver features the narrow interfaces do not cover
   ([ADR-0005](docs/adr/0005-driver-escape-hatch-accessors.md)). Closes ROADMAP
-  P1, F1, and the accessor halves of R1 and S2.
+  P1 and the accessor halves of R1 and S2. `fiber.App()` is read-only in
+  practice — the app is only built once Fiber is listening — so F1's ordering
+  constraint stands.
 - `s3.Config.UploadPartSize` (default 8 MiB, floor 5 MiB) and
   `s3.Config.UploadConcurrency` (default 5) — the memory/throughput trade-off
   for uploads is now tunable.
+
+### Changed
+- **BREAKING (redis):** the narrow interface is now `redis.KV`, not
+  `redis.Client`. It was the only module naming its seam after the driver
+  rather than the role it plays — `postgresql.DB`, `s3.Storage`,
+  `rabbitmq.Publisher` — and it collided with the new `Client()` accessor.
+  Adapters that declare `redis.Client` fields change the type name; nothing
+  else moves, and code depending on `*Component` is unaffected.
 
 ### Fixed
 - **`s3.Upload` buffered the entire object in memory.** It read the whole body

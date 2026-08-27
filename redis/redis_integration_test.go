@@ -592,7 +592,7 @@ func TestIntegration_Client_UsableAfterStart(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected a non-nil client after Start")
 	}
-	// A pipeline is unreachable through the Client interface.
+	// A pipeline is unreachable through the KV interface.
 	ctx := context.Background()
 	key := uniqueKey(t, "pipelined")
 	pipe := client.Pipeline()

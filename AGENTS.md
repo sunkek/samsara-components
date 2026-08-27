@@ -56,7 +56,7 @@ settled, and the reasons are not visible in the code:
   `Option`, `WithLogger`, and `WithName` are copied verbatim, so the nine stay
   diffable. Change one and change all nine the same way.
 - **Depend on the seam, not the component:** the caller-facing surface is
-  declared as an interface — `postgresql.DB`, `sqlite.DB`, `redis.Client`,
+  declared as an interface — `postgresql.DB`, `sqlite.DB`, `redis.KV`,
   `s3.Storage`, `rabbitmq.Publisher` — with a `var _ Iface = (*Component)(nil)`
   assertion beside it. A new operation goes on both.
 - **Doc comments:** every exported identifier. State the pre-`Start` behaviour

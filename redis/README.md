@@ -29,12 +29,12 @@ sup.Add(rdb,
 
 ### Use in domain adapters
 
-Depend on the `Client` interface, not `*Component`, to keep adapters
+Depend on the `KV` interface, not `*Component`, to keep adapters
 testable without a real Redis server:
 
 ```go
 type SessionStore struct {
-    rdb redis.Client
+    rdb redis.KV
 }
 
 func (s *SessionStore) Save(ctx context.Context, id string, data []byte, ttl time.Duration) error {
@@ -109,7 +109,7 @@ redis.WithName("session-store")     // override component name
 
 ## Escape hatch
 
-`Client() *redis.Client` returns the go-redis handle for features the `Client`
+`Client() *redis.Client` returns the go-redis handle for features the `KV`
 interface does not cover — pipelines, Lua `EVAL`, hashes, sets, streams,
 pub/sub.
 
@@ -118,15 +118,15 @@ h := rdb.Client() // nil before Start and after Stop
 pipe := h.Pipeline()
 ```
 
-Note the name appears twice with different meanings: the `Client` *interface* is
-what domain adapters should depend on; the `Client()` *method* is the driver
-handle. See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+Adapters should keep depending on `KV`; this is the long tail that interface
+deliberately does not cover. See
+[ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
 
 ---
 
 ## API reference
 
-### `Client` interface
+### `KV` interface
 
 | Method | Description |
 |--------|-------------|
@@ -139,7 +139,7 @@ handle. See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
 | `TTL(ctx, key)` | Get remaining TTL; negative if absent or no expiry |
 | `Scan(ctx, pattern)` | Iterate all matching keys safely (cursor-based) |
 
-`*Component` satisfies `Client`.
+`*Component` satisfies `KV`.
 
 ### Sentinel errors
 
@@ -172,7 +172,7 @@ sup.Add(sessions, samsara.WithTier(samsara.TierCritical))
 ## Testing adapters without Redis
 
 ```go
-type mockRedis struct{ redis.Client }
+type mockRedis struct{ redis.KV }
 
 func (m *mockRedis) Get(_ context.Context, key string) (string, error) {
     if key == "session:abc" {

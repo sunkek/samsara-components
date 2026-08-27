@@ -3,7 +3,7 @@
 Gap-closing backlog derived from a production review of the `fiber`, `postgresql`,
 `redis`, and `s3` components as consumed by an external Fiber gateway. The shared
 shape is good: `New(Config, WithLogger/WithName)`, connectivity-probe-before-`ready()`,
-ctx-bounded idempotent `Stop`, narrow driver-independent interfaces (`DB`, `Client`),
+ctx-bounded idempotent `Stop`, narrow driver-independent interfaces (`DB`, `KV`),
 compile-time samsara-interface assertions. The items below are the rough edges — one
 of which (s3 in-memory upload buffering) caused a production incident in the consuming
 gateway (health-probe starvation under concurrent large uploads → supervisor
@@ -106,13 +106,13 @@ connectivity.
 
 ## redis
 
-### R1. `Client` interface is too thin for anything beyond simple KV
+### R1. `KV` interface is too thin for anything beyond simple key/value work
 **Status: partly shipped.** The atomic-counter half landed in `redis/v0.5.0`
 (2026-07-28): `Incr` plus `Expire`-on-first is exactly the `INCR`+`EXPIRE`
 pattern the rate limiter needed, and `SetNX` landed earlier for locks and
 idempotency keys. What remains open is everything below except `INCR`.
 
-The interface (`redis/client.go:17`) exposes 9 ops — `Set`, `SetNX`, `Get`, `Del`,
+The `KV` interface (`redis/client.go:17`) exposes 9 ops — `Set`, `SetNX`, `Get`, `Del`,
 `Exists`, `Incr`, `Expire`, `TTL`, `Scan`. No `DECR`, no pipelines, no Lua `EVAL`, no
 pub/sub, no hashes/sets/zsets/streams, no `MSET`/`MGET`, and no `*redis.Client`
 accessor. **Historical downstream cost (now resolved):** the consuming gateway's rate

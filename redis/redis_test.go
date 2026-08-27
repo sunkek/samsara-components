@@ -95,8 +95,8 @@ func TestHealth_BeforeStart(t *testing.T) {
 // Interface compliance
 // ----------------------------------------------------------------------------
 
-func TestComponent_ImplementsClient(t *testing.T) {
-	var _ redis.Client = (*redis.Component)(nil)
+func TestComponent_ImplementsKV(t *testing.T) {
+	var _ redis.KV = (*redis.Component)(nil)
 }
 
 // ----------------------------------------------------------------------------
@@ -119,7 +119,7 @@ func TestErrNil_Sentinel(t *testing.T) {
 	}
 }
 
-// TestErrNotReady verifies that every Client operation returns ErrNotReady —
+// TestErrNotReady verifies that every KV operation returns ErrNotReady —
 // not a nil-pointer panic — when the component has no live connection (before
 // Start, after Stop, or during a restart while Redis is down).
 func TestErrNotReady_NoPanic(t *testing.T) {

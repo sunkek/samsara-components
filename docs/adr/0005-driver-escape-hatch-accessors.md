@@ -47,7 +47,7 @@ exporting it would publish its churn. `s3.Client()` returns the GA
   `grpcclient.Conn` does, and point callers at `samsara.WithDependencies` when
   they need the handle at startup.
 - **Never on the narrow interface.** `postgresql.DB`, `sqlite.DB`,
-  `redis.Client`, `s3.Storage` and `rabbitmq.Publisher` are the seams adapters
+  `redis.KV`, `s3.Storage` and `rabbitmq.Publisher` are the seams adapters
   depend on and fake; putting an un-fakeable driver handle on them would make
   every one of them un-implementable outside this repository.
 - **An accessor is not a substitute for an operation with real depth.** If a
