@@ -32,6 +32,11 @@ settled, and the reasons are not visible in the code:
   `Logger` and `Option` are copied nine times.
 - [ADR-0003](./docs/adr/0003-driver-types-at-the-interface.md) — why pgx, amqp,
   and grpc types appear in exported signatures.
+- [ADR-0004](./docs/adr/0004-transfermanager-behind-an-internal-port.md) — why
+  the s3 upload engine sits behind an unexported port, unlike every other driver.
+- [ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md) — why every
+  component exports an accessor for its driver handle, and what that accessor
+  may not be attached to.
 
 ## Conventions
 

@@ -16,8 +16,7 @@ across all of them.
   Publish-only by design: subscription setup is wiring, not a domain concern.
 - `TestConfig_ZeroValueNoPanic` in every module — the zero-value `Config`
   contract was only asserted in `fiber`.
-- `CONTEXT.md` (shared vocabulary) and `docs/adr/` (the first three decision
-  records).
+- `CONTEXT.md` (shared vocabulary) and `docs/adr/` (five decision records).
 - `make fmt-check` and `make fmt`, with `fmt-check` wired into `make check` and
   CI — formatting drift previously reached `main` unnoticed (#6).
 - `make vuln` (`govulncheck` per module) and a CI job running it — nine

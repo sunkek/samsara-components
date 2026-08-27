@@ -86,9 +86,10 @@ without buffering — see
 `getClient` is private (`s3/s3.go:150`) and `UploadRequest` (`s3/operations.go:17`)
 has no fields for SSE, object metadata, tagging, or explicit `Content-Length`.
 `CopyObject`, `HeadObject`, range-GET, versioning, and multipart are all unreachable.
-**Direction.** Either broaden the op surface or export a `Client() *s3.Client`
-accessor (as done for other drivers below), plus metadata/SSE/tagging fields on
-`UploadRequest`.
+**Direction.** Settled by
+[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md): export
+`Client() *s3.Client`, and add metadata/SSE/tagging fields to `UploadRequest`
+for the uses common enough to deserve wrapping.
 
 ### S3. `Health` HeadBuckets a synthetic bucket and treats 403 as healthy
 `Health` re-runs `verifyConnectivity` (`s3/s3.go:251,259`), which issues
@@ -116,9 +117,9 @@ accessor. **Historical downstream cost (now resolved):** the consuming gateway's
 limiter could not express an atomic `INCR`+`EXPIRE` and fell back to a racy
 read-modify-write `Set` (gateway
 `internal/component/ratelimit/ratelimit.go:112`). `Incr` closed that.
-**Direction for the remainder.** Add `DecrBy`/`IncrBy`, pipelines, or a Lua
-helper as concrete needs appear, and/or export `Client() *redis.Client` for
-advanced use.
+**Direction for the remainder.** Export `Client() *redis.Client`, per
+[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md), and add
+`DecrBy`/`IncrBy`, pipelines, or a Lua helper as concrete needs appear.
 
 ### R2. No cluster / sentinel / failover support
 `Start` builds a plain `redis.NewClient` (`redis/redis.go:212`); `Config` has no
@@ -142,8 +143,8 @@ keyspace scan is unbounded memory. **Direction.** Add a streaming/callback varia
 ### P1. No exported `Pool()` accessor
 `getPool` is private (`postgresql/postgresql.go:183`); the `DB` interface covers
 `Select`/`Get`/`Exec`/`BeginTx` only. `CopyFrom` (bulk load), `LISTEN`/`NOTIFY`,
-batched queries, and custom row handling are unreachable. **Direction.** Export
-`Pool() *pgxpool.Pool` (matching the accessor pattern proposed for redis/s3).
+batched queries, and custom row handling are unreachable. **Direction.** Export `Pool() *pgxpool.Pool`, per
+[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md).
 
 ### P2. Minimal pool tuning
 Only `MaxConns`/`MinConns` (`postgresql/postgresql.go:56-59`). No
@@ -169,8 +170,9 @@ mirroring redis.
 ### F1. No `*gf.App` accessor; routes must be registered before `Start`
 `Register`/`Use` are the only injection points and must run pre-`Start`; there is no
 accessor to the underlying `*fiber.App`, so any Fiber feature the component doesn't
-surface is unreachable. **Direction.** Export `App() *fiber.App` (guarded/documented
-for pre-Start use).
+surface is unreachable. **Direction.** Export `App() *fiber.App`, per
+[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md); its doc comment
+must state that mutations after `Start` do not take effect.
 
 ### F2. No built-in metrics/tracing middleware
 Only a request-logger format string; no Prometheus/OTel middleware. Consumers
