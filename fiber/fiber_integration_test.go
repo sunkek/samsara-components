@@ -353,3 +353,19 @@ func TestIntegration_Use_PathScopedCallDoesNotUnscopeOthers(t *testing.T) {
 		t.Fatalf("authenticated request: got %d, want 200", authed.StatusCode)
 	}
 }
+
+// TestIntegration_App_UsableAfterStart exercises the ADR-0005 escape hatch.
+// Unlike the other components, the app is only readable: it is already
+// listening by the time App returns non-nil.
+func TestIntegration_App_UsableAfterStart(t *testing.T) {
+	srv, _ := testSrv(t)
+	startSrv(t, srv)
+
+	app := srv.App()
+	if app == nil {
+		t.Fatal("expected a non-nil app after Start")
+	}
+	if len(app.GetRoutes()) == 0 {
+		t.Fatal("expected the app to expose its registered routes")
+	}
+}

@@ -127,9 +127,11 @@ s3.Config{
     KeyID            string        // access key ID
     Secret           string        // secret access key
 
-    ConnectTimeout   time.Duration // default: 10s — startup check deadline
-    PresignTTL       time.Duration // default: 15m — presigned URL lifetime
-    PathStyleForcing bool          // default: false; set true for SeaweedFS / local servers
+    ConnectTimeout    time.Duration // default: 10s — startup check deadline
+    PresignTTL        time.Duration // default: 15m — presigned URL lifetime
+    UploadPartSize    int64         // default: 8 MiB — multipart chunk size, floor 5 MiB
+    UploadConcurrency int           // default: 5 — parts transferred in parallel
+    PathStyleForcing  bool          // default: false; set true for SeaweedFS / local servers
 }
 ```
 
@@ -142,13 +144,32 @@ s3.WithName("media-store")       // override component name
 
 ---
 
+## Escape hatch
+
+`Client() *s3.Client` returns the AWS SDK service client for operations
+`Storage` does not cover — `CopyObject`, `HeadObject`, range GETs, versioning,
+bucket administration.
+
+```go
+c := store.Client() // nil before Start and after Stop
+out, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &b, Key: &k})
+```
+
+This is the GA service client. Uploads run through a pre-1.0 transfer manager
+that is deliberately not exported —
+[ADR-0004](../docs/adr/0004-transfermanager-behind-an-internal-port.md); the
+accessor itself follows
+[ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## API reference
 
 ### Operations
 
 | Method | Description |
 |--------|-------------|
-| `Upload(ctx, UploadRequest)` | Put an object; auto-detects MIME type |
+| `Upload(ctx, UploadRequest)` | Put an object; streams the body, auto-detects MIME type |
 | `Download(ctx, bucket, key)` | Get an object; caller closes returned `io.ReadCloser` |
 | `Delete(ctx, bucket, key)` | Remove a single object |
 | `DeleteByPrefix(ctx, bucket, prefix)` | Remove all objects under prefix; returns count |
@@ -184,6 +205,21 @@ store.Upload(ctx, s3.UploadRequest{
     ...
 })
 ```
+
+## Upload memory use
+
+`Upload` streams the body: it holds only the 512-byte sniff buffer itself,
+whatever the object size. Uploads above `UploadPartSize` are transferred as a
+multipart upload, so peak memory per in-flight upload is roughly
+
+    (UploadConcurrency + 1) x UploadPartSize
+
+— about 85 MiB at the defaults once GC slack and HTTP buffers are counted, and
+independent of how large the object is. Lower `UploadPartSize` or
+`UploadConcurrency` if many uploads run at once; raise them for throughput on
+very large objects.
+
+The body needs to be neither seekable nor of known length.
 
 ## Presigned upload constraints
 

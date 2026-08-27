@@ -46,6 +46,9 @@ type TxFinaliser interface {
 	Rollback(ctx context.Context) error
 }
 
+// Compile-time assertion: *Component satisfies DB.
+var _ DB = (*Component)(nil)
+
 // ErrNoRows is returned by [Select] and [Get] when no rows match the query.
 // Use errors.Is(err, postgresql.ErrNoRows) to check.
 var ErrNoRows = pgx.ErrNoRows

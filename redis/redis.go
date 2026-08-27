@@ -12,7 +12,7 @@
 //	    samsara.WithRestartPolicy(samsara.ExponentialBackoff(5, time.Second)),
 //	)
 //
-// Domain adapters receive *Component (or the [Client] interface) and call
+// Domain adapters receive *Component (or the [KV] interface) and call
 // Set, Get, Del, and Scan — they never import go-redis directly.
 package redis
 
@@ -115,7 +115,7 @@ func (nopLogger) Error(string, ...any) {}
 // Component is a samsara-compatible Redis component.
 // Obtain one with [New]; register it with a samsara supervisor.
 //
-// Domain adapters should accept [Client] rather than *Component to keep
+// Domain adapters should accept [KV] rather than *Component to keep
 // their tests independent of a real Redis server.
 type Component struct {
 	cfg  Config
@@ -174,6 +174,21 @@ var (
 
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
+
+// Client returns the underlying [*redis.Client] from go-redis — the escape
+// hatch for features this component does not wrap: pipelines, Lua EVAL,
+// hashes, sets, streams, pub/sub.
+//
+// Adapters should keep depending on the [KV] interface; this is the long tail
+// that interface deliberately does not cover.
+//
+// It returns nil before [Component.Start] and after [Component.Stop]. Callers
+// that need the handle at startup should depend on this component via
+// samsara.WithDependencies so Start has already run.
+//
+// Operating on the handle directly bypasses this component's logging and
+// lifecycle handling.
+func (c *Component) Client() *redis.Client { return c.getClient() }
 
 // getClient returns the current client under a read lock.
 func (c *Component) getClient() *redis.Client {

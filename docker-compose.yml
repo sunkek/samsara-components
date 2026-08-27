@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: test
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${SC_POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U test -d test"]
       interval: 2s
@@ -22,7 +22,7 @@ services:
   redis:
     image: redis:8-alpine
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${SC_REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -36,7 +36,7 @@ services:
       RABBITMQ_DEFAULT_PASS: test
       RABBITMQ_DEFAULT_VHOST: test
     ports:
-      - "127.0.0.1:5672:5672"   # AMQP
+      - "127.0.0.1:${SC_RABBITMQ_PORT:-5672}:5672"   # AMQP
       - "127.0.0.1:15672:15672" # management UI (http://localhost:15672)
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -58,7 +58,7 @@ services:
   seaweedfs:
     image: chrislusf/seaweedfs:latest
     ports:
-      - "127.0.0.1:8333:8333"   # S3 API
+      - "127.0.0.1:${SC_S3_PORT:-8333}:8333"   # S3 API
     volumes:
       - ./scripts/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
     # -s3.config mounts credentials; -dir keeps data in a tmpfs-backed path.

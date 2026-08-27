@@ -114,6 +114,24 @@ postgresql.WithName("postgres-replica")         // override component name (defa
 
 ---
 
+## Escape hatch
+
+`Pool() *pgxpool.Pool` returns the underlying pool for pgx features the `DB`
+interface does not cover — `CopyFrom`, `LISTEN`/`NOTIFY`, batched queries,
+custom row handling.
+
+```go
+pool := db.Pool() // nil before Start and after Stop
+_, err := pool.CopyFrom(ctx, pgx.Identifier{"events"}, cols, src)
+```
+
+Depend on the component via `samsara.WithDependencies` if you need the pool at
+startup, so `Start` has already run. Working on the pool directly bypasses the
+component's logging and lifecycle handling; prefer `DB` for anything it covers.
+See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## API reference
 
 ### `DB` interface

@@ -1,31 +1,99 @@
-# Repository Guidelines
+# Working in samsara-components
 
-## Project Structure & Module Organization
+Nine independent Go modules — `fiber/`, `grpc/`, `grpcclient/`, `postgresql/`,
+`prometheus/`, `rabbitmq/`, `redis/`, `s3/`, `sqlite/` — tied together for local
+development by `go.work`. Each exports one `Component` implementing the samsara
+lifecycle (`Start`, `Stop`, `Health`).
 
-This repository is a Go workspace monorepo. Each top-level component directory is an independent module with its own `go.mod`: `fiber/`, `grpc/`, `grpcclient/`, `postgresql/`, `rabbitmq/`, `redis/`, and `s3/`. Root-level `go.work` ties them together for local development. Keep module-specific docs in each module's `README.md`. Shared test infrastructure lives in `docker-compose.yml` and `scripts/`.
+[CONTEXT.md](./CONTEXT.md) is the glossary. Read it before naming anything, and
+when a term in the code reads ambiguously — component, ready signal, config,
+option, subscription, retry topology.
 
-## Build, Test, and Development Commands
+## Before you edit
 
-- `make test`: run unit tests across all modules.
-- `make test-race`: run unit tests with the race detector; use this before pushing.
-- `make check`: run `go vet`, `staticcheck`, and race-tested unit suites.
-- `make test-integration`: start Docker Compose services, run `-tags integration` tests, then tear infra down.
-- `make test-all`: run unit and integration tests together.
-- `make coverage`: print per-module coverage summaries.
-- `make tidy`: run `go mod tidy` in every module.
+Read the module's own `<module>.go` first. The nine are deliberately
+near-identical in shape, so the answer to "how should this look?" is almost
+always "like the other eight": `Component` struct, `New(cfg, opts...)`,
+lifecycle triple, `Config` with unexported accessors supplying defaults.
 
-## Coding Style & Naming Conventions
+File names follow the concern, and vary by module: `Config` lives in
+`config.go` where the module has one and in `<module>.go` otherwise; the
+caller-facing surface is `client.go`, `db.go`, `messaging.go`, `operations.go`,
+or `observer.go` depending on what the component does. Tests sit next to the
+code, integration tests in `*_integration_test.go` behind
+`//go:build integration`.
 
-Use standard Go formatting and layout: tabs for indentation, `gofmt` formatting, and idiomatic package naming. Keep public APIs small and explicit; exported identifiers require Go doc comments. Prefer descriptive file names by concern, such as `config.go`, `client.go`, or `operations.go`. Wrap errors with context using `fmt.Errorf("...: %w", err)`.
+Read the ADR before reopening one of these — each records a trade-off already
+settled, and the reasons are not visible in the code:
 
-## Testing Guidelines
+- [ADR-0001](./docs/adr/0001-one-module-per-component.md) — why nine modules and
+  no shared internal package.
+- [ADR-0002](./docs/adr/0002-duplicated-logger-and-option-boilerplate.md) — why
+  `Logger` and `Option` are copied nine times.
+- [ADR-0003](./docs/adr/0003-driver-types-at-the-interface.md) — why pgx, amqp,
+  and grpc types appear in exported signatures.
+- [ADR-0004](./docs/adr/0004-transfermanager-behind-an-internal-port.md) — why
+  the s3 upload engine sits behind an unexported port, unlike every other driver.
+- [ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md) — why every
+  component exports an accessor for its driver handle, and what that accessor
+  may not be attached to.
 
-Place unit tests next to implementation as `*_test.go`. Integration tests use `*_integration_test.go` and the `integration` build tag. Favor unit coverage for component lifecycle and configuration logic, then add integration coverage for real network or container-backed behavior. Run `make check` for fast validation and `make test-all` before opening a PR.
+## Conventions
 
-## Commit & Pull Request Guidelines
+- **Scope:** stay in the module you were asked about. Sharing a workspace is not
+  a reason to touch the other eight.
+- **Tunables belong in `Config`**, with an unexported accessor supplying the
+  default. `Option` carries dependencies and identity (`WithLogger`,
+  `WithName`); `fiber.WithSwagger` is the one tunable that arrived as an
+  `Option`, and it stays the exception.
+- **Zero value works:** `Config{}` produces a usable component, and every
+  module has a `TestConfig_ZeroValueNoPanic` asserting it. A new module adds
+  one.
+- **Errors:** wrap with a tag and the operation —
+  `fmt.Errorf("rabbitmq: declare exchange %q: %w", name, err)`. The tag is the
+  module name, except `postgresql`, which tags `postgres:`.
+- **Boilerplate stays identical:** the nine copies of `Logger`, `nopLogger`,
+  `Option`, `WithLogger`, and `WithName` are copied verbatim, so the nine stay
+  diffable. Change one and change all nine the same way.
+- **Depend on the seam, not the component:** the caller-facing surface is
+  declared as an interface — `postgresql.DB`, `sqlite.DB`, `redis.KV`,
+  `s3.Storage`, `rabbitmq.Publisher` — with a `var _ Iface = (*Component)(nil)`
+  assertion beside it. A new operation goes on both.
+- **Doc comments:** every exported identifier. State the pre-`Start` behaviour
+  when a method is callable before `Start`.
+- **Import the runtime nowhere.** Components satisfy samsara's interfaces
+  structurally, and that is what keeps the modules independent of it.
 
-Recent history favors short, imperative commit messages, for example `Polish config and shutdown` or `Nullify pool on stop`. Keep commits focused by module or behavior. Pull requests should include a clear summary, tests for behavior changes, linked issues when applicable, and updated README/docs when public APIs or configuration change.
+## Verifying
 
-## Agent-Specific Notes
+Run `make` targets rather than ad hoc `go` commands, so results match CI. The
+`Makefile` lists them; `make check` before pushing, `make test-all` before
+opening a PR. `make check` gates on `gofmt` too, and `make fmt` fixes drift.
+`make lint` installs `staticcheck` if it is missing, and `make vuln` installs
+`govulncheck`. `make coverage-check` compares each module against
+`scripts/coverage-baseline.txt` and fails on a drop of more than 2 points; if a
+change moves the numbers in either direction, run `make coverage-update` and
+commit the file.
 
-Do not edit unrelated modules just because they share the workspace. Prefer the root `Makefile` over ad hoc commands so checks stay consistent with CI.
+Integration tests need the Docker services in `docker-compose.yml`;
+`make test-integration` brings them up and down around the run. If a host port
+is already taken, override it — `SC_POSTGRES_PORT`, `SC_REDIS_PORT`,
+`SC_RABBITMQ_PORT`, `SC_S3_PORT` are read by both Compose and the tests.
+
+One module at a time:
+
+```bash
+cd postgresql && go test -race -count=3 ./...
+cd postgresql && go test -race -count=1 -tags integration ./...
+```
+
+Unit tests cover lifecycle and config; integration tests cover real network
+behaviour. A behaviour change lands with a test at the level that can observe
+it.
+
+## Commits and PRs
+
+Short, imperative, scoped to a module or a behaviour: `postgresql: add WithName
+option`. PRs: summary, tests for behaviour changes, linked issue, and updates to
+the module's `README.md` and the root `CHANGELOG.md` when a public API or config
+field moves.

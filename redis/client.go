@@ -9,12 +9,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Client is the interface that domain adapters should depend on.
-// *Component satisfies it; depend on Client rather than *Component to keep
+// KV is the interface that domain adapters should depend on: keyed values
+// with TTLs, which is what this component wraps.
+// *Component satisfies it; depend on KV rather than *Component to keep
 // adapters testable without a real Redis server.
 //
-//	type SessionStore struct { rdb redis.Client }
-type Client interface {
+// It is deliberately not called Client — [Component.Client] returns the
+// go-redis handle, and the two are different things.
+//
+//	type SessionStore struct { rdb redis.KV }
+type KV interface {
 	// Set stores value at key with the given TTL.
 	// Use ttl=0 for no expiry.
 	Set(ctx context.Context, key string, value any, ttl time.Duration) error
@@ -60,11 +64,14 @@ type Client interface {
 	Scan(ctx context.Context, pattern string) ([]string, error)
 }
 
-// ErrNil is returned by [Client.Get] when the key does not exist.
+// Compile-time assertion: *Component satisfies KV.
+var _ KV = (*Component)(nil)
+
+// ErrNil is returned by [KV.Get] when the key does not exist.
 // Use errors.Is(err, redis.ErrNil) to check.
 var ErrNil = redis.Nil
 
-// ErrNotReady is returned by every [Client] operation when the component has
+// ErrNotReady is returned by every [KV] operation when the component has
 // no live connection: before [Component.Start] succeeds, after
 // [Component.Stop], or while the supervisor is restarting it (e.g. Redis is
 // down). Callers get this error instead of a nil-pointer panic and can choose

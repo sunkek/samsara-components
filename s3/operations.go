@@ -1,12 +1,9 @@
 package s3
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -60,55 +57,6 @@ const (
 	ACLBucketOwnerRead        ACL = "bucket-owner-read"
 	ACLBucketOwnerFullControl ACL = "bucket-owner-full-control"
 )
-
-// Upload puts an object into S3. The MIME type is auto-detected from the first
-// 512 bytes of Body unless [UploadRequest.ContentType] is set explicitly.
-func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
-	client := c.getClient()
-	if client == nil {
-		return fmt.Errorf("s3 upload: client not initialised")
-	}
-	if r.Bucket == "" || r.Key == "" {
-		return fmt.Errorf("s3 upload: bucket and key are required")
-	}
-
-	contentType := r.ContentType
-	var body io.ReadSeeker
-	if contentType == "" {
-		var err error
-		var br *bytes.Reader
-		contentType, br, err = detectContentType(r.Key, r.Body)
-		if err != nil {
-			return fmt.Errorf("s3 upload: content-type detection: %w", err)
-		}
-		body = br
-	} else {
-		// Even when ContentType is provided we need a seekable body for the
-		// AWS SDK v2 checksum calculation over plain HTTP. Buffer it.
-		all, err := io.ReadAll(r.Body)
-		if err != nil {
-			return fmt.Errorf("s3 upload: read body: %w", err)
-		}
-		body = bytes.NewReader(all)
-	}
-
-	acl := r.ACL
-	if acl == "" {
-		acl = ACLPrivate
-	}
-
-	input := &s3.PutObjectInput{
-		Bucket:      &r.Bucket,
-		Key:         &r.Key,
-		Body:        body,
-		ACL:         types.ObjectCannedACL(acl),
-		ContentType: &contentType,
-	}
-	if _, err := client.PutObject(ctx, input); err != nil {
-		return fmt.Errorf("s3 upload %q/%q: %w", r.Bucket, r.Key, err)
-	}
-	return nil
-}
 
 // Download retrieves an object from S3. The caller must close the returned
 // [io.ReadCloser] after reading.
@@ -278,36 +226,6 @@ func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string
 		return "", fmt.Errorf("s3 presign-upload %q/%q: %w", r.Bucket, r.Key, err)
 	}
 	return resp.URL, nil
-}
-
-// detectContentType sniffs the MIME type from the first 512 bytes of body,
-// reads all remaining bytes, and returns the full content as a *bytes.Reader.
-//
-// Returning a *bytes.Reader (which implements io.ReadSeeker) is required by
-// AWS SDK v2: over plain HTTP the SDK must compute the payload checksum
-// upfront, which requires a seekable stream. An io.MultiReader is not
-// seekable and causes "unseekable stream is not supported without TLS".
-//
-// SVG files are detected by extension or content prefix.
-func detectContentType(key string, body io.Reader) (string, *bytes.Reader, error) {
-	all, err := io.ReadAll(body)
-	if err != nil {
-		return "", nil, err
-	}
-
-	sniff := all
-	if len(sniff) > 512 {
-		sniff = sniff[:512]
-	}
-	contentType := http.DetectContentType(sniff)
-
-	// http.DetectContentType cannot detect SVG; handle it explicitly.
-	if strings.HasSuffix(strings.ToLower(key), ".svg") ||
-		bytes.Contains(bytes.ToLower(sniff), []byte("<svg")) {
-		contentType = "image/svg+xml"
-	}
-
-	return contentType, bytes.NewReader(all), nil
 }
 
 // ptrOf returns a pointer to v.

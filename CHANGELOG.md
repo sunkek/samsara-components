@@ -10,6 +10,138 @@ across all of them.
 
 ## [Unreleased]
 
+Repository-wide tooling and documentation; no module version depends on these.
+
+### Added
+- `CONTEXT.md` (shared vocabulary) and `docs/adr/` (five decision records).
+- `make fmt-check` and `make fmt`, with `fmt-check` wired into `make check` and
+  CI — formatting drift previously reached `main` unnoticed (#6).
+- `make vuln` (`govulncheck` per module) and a CI job running it — nine
+  dependency trees had nothing checking pinned versions against published
+  advisories (#7).
+- `scripts/coverage-baseline.txt` with `make coverage-check`,
+  `make coverage-update`, and `make coverage-update-integration`, wired into CI:
+  per-module coverage now has a recorded floor in both the unit and integration
+  columns, so a drop is visible instead of silent (#8).
+- `SC_POSTGRES_PORT`, `SC_REDIS_PORT`, `SC_RABBITMQ_PORT`, and `SC_S3_PORT` —
+  host ports for the integration services, read by both `docker-compose.yml` and
+  the integration tests, so a machine already running one of them can move it
+  without editing tracked files.
+
+### Fixed
+- `CONTRIBUTING.md`'s repository tree omitted `prometheus/`, `sqlite/`, and
+  `s3/storage.go`; `AGENTS.md`'s module list omitted `prometheus` and `sqlite`.
+- ROADMAP items cited line numbers that no longer matched, and four of them
+  described gaps that have since been closed.
+
+---
+
+## s3/v0.3.0 — 2026-08-27
+
+### Added
+- `Client() *s3.Client` — the escape hatch for SDK operations `Storage` does not
+  wrap: `CopyObject`, `HeadObject`, range GETs, versioning, bucket
+  administration. Returns nil outside the started lifecycle
+  ([ADR-0005](docs/adr/0005-driver-escape-hatch-accessors.md)).
+- `Config.UploadPartSize` (default 8 MiB, floor 5 MiB) and
+  `Config.UploadConcurrency` (default 5) — the memory/throughput trade-off for
+  uploads is now tunable.
+- `TestConfig_ZeroValueNoPanic`, plus the first unit tests of upload policy —
+  content-type sniffing and ACL defaulting were previously reachable only
+  through Docker.
+
+### Fixed
+- **`Upload` buffered the entire object in memory.** It read the whole body with
+  `io.ReadAll` to obtain a seekable stream, so peak memory scaled with object
+  size and large uploads could exhaust the process (#4). Uploads now stream
+  through the AWS SDK's transfer manager as a multipart upload, bounded by
+  `(UploadConcurrency+1) x UploadPartSize` regardless of object size. The body
+  no longer has to be seekable or of known length, and content-type sniffing
+  buffers only the leading 512 bytes. `Upload`'s signature is unchanged.
+
+### Dependencies
+- Adds `github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager` v0.3.17, which
+  is **pre-1.0** and breaking before v1.0 is likely. It is reached only through
+  an unexported port, so its types stay out of this module's exported surface
+  ([ADR-0004](docs/adr/0004-transfermanager-behind-an-internal-port.md)).
+
+### Verification note
+- The streaming path is measured against SeaweedFS over plain HTTP, the
+  integration environment this repository ships. It has not been exercised
+  against real AWS S3.
+
+---
+
+## redis/v0.6.0 — 2026-08-27
+
+### Changed
+- **BREAKING:** the narrow interface is now `KV`, not `Client`. It was the only
+  module naming its seam after the driver rather than the role it plays —
+  `postgresql.DB`, `s3.Storage`, `rabbitmq.Publisher` — and it collided with the
+  new `Client()` accessor. Adapters that declare a `redis.Client` field change
+  the type name; nothing else moves, and code depending on `*Component` is
+  unaffected.
+
+### Added
+- `Client() *redis.Client` — the escape hatch for go-redis features `KV` does
+  not wrap: pipelines, Lua `EVAL`, hashes, sets, streams, pub/sub. Returns nil
+  outside the started lifecycle
+  ([ADR-0005](docs/adr/0005-driver-escape-hatch-accessors.md)).
+- `TestConfig_ZeroValueNoPanic` — the zero-value `Config` contract was only
+  asserted in `fiber`.
+
+### Fixed
+- The compile-time assertion that `*Component` satisfies the narrow interface
+  was missing.
+
+---
+
+## postgresql/v0.3.0 — 2026-08-27
+
+### Added
+- `Pool() *pgxpool.Pool` — the escape hatch for pgx features `DB` does not wrap:
+  `CopyFrom`, `LISTEN`/`NOTIFY`, batched queries, custom row handling. Returns
+  nil outside the started lifecycle
+  ([ADR-0005](docs/adr/0005-driver-escape-hatch-accessors.md)).
+- `TestConfig_ZeroValueNoPanic` — the zero-value `Config` contract was only
+  asserted in `fiber`.
+
+### Fixed
+- The compile-time assertion that `*Component` satisfies `DB` was missing.
+
+---
+
+## fiber/v0.6.0 — 2026-08-27
+
+### Added
+- `App() *fiber.App` — access to the underlying Fiber app
+  ([ADR-0005](docs/adr/0005-driver-escape-hatch-accessors.md)). It is read-only
+  in practice: the app is built inside `Start`, so `App` returns nil until Fiber
+  is already listening, and routes registered afterwards are not served. Use
+  `Register` and `Use` to add behaviour.
+- `TestConfig_ZeroValueNoPanic`.
+
+---
+
+## rabbitmq/v0.4.0 — 2026-08-27
+
+### Added
+- **`Publisher`** — the interface domain adapters should depend on, matching
+  `postgresql.DB`, `sqlite.DB`, `redis.KV`, and `s3.Storage`. Publish-only by
+  design: subscription setup is wiring, not a domain concern.
+- `TestConfig_ZeroValueNoPanic`.
+
+---
+
+## grpc/v0.2.1, grpcclient/v0.2.1, prometheus/v0.1.1, sqlite/v0.1.1 — 2026-08-27
+
+### Added
+- `TestConfig_ZeroValueNoPanic` in each — the zero-value `Config` contract was
+  only asserted in `fiber`.
+
+### Dependencies
+- Routine updates picked up since the previous tag. No source changes.
+
 ---
 
 ## fiber/v0.5.0 — 2026-07-28

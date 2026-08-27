@@ -220,6 +220,26 @@ srv.Use(func(c gf.Ctx) error {
 
 ---
 
+## Escape hatch
+
+`App() *fiber.App` returns the underlying Fiber app for features this component
+does not surface — route introspection, app-level state, anything Fiber exposes
+on `*fiber.App`.
+
+It is read-only in practice. The app is built inside `Start`, so `App` returns
+nil until Start has run, and by then Fiber is already listening: routes and
+middleware registered afterwards are not served. Use `Register` and `Use`, which
+run at the right point in `Start`. See
+[ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+```go
+for _, r := range srv.App().GetRoutes() {
+    log.Println(r.Method, r.Path)
+}
+```
+
+---
+
 ## Health checking
 
 `*Component` implements `samsara.HealthChecker`. The supervisor polls

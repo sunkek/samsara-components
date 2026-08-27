@@ -41,6 +41,11 @@ samsara-components/
 │   ├── db.go                # query API (Select, Get, Exec, transactions)
 │   ├── postgresql_test.go              # unit tests (no database required)
 │   └── postgresql_integration_test.go  # integration tests (//go:build integration)
+├── prometheus/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/prometheus
+│   ├── prometheus.go        # component lifecycle (Start, Stop, Health), metrics endpoint
+│   ├── observer.go          # Observer — supervisor telemetry into a registry
+│   └── prometheus_test.go   # unit tests (no scrape target required)
 ├── rabbitmq/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/rabbitmq
 │   ├── rabbitmq.go          # component lifecycle (Start, Stop, Health)
@@ -56,11 +61,24 @@ samsara-components/
 ├── s3/
 │   ├── go.mod               # module: github.com/sunkek/samsara-components/s3
 │   ├── s3.go                # component lifecycle (Start, Stop, Health)
+│   ├── storage.go           # Storage interface (the seam adapters depend on)
 │   ├── operations.go        # Upload/Download/Delete/ListKeys/Presign operations
 │   ├── internal.go          # credential provider, HTTP error classification
 │   ├── s3_test.go              # unit tests (no S3 endpoint required)
 │   └── s3_integration_test.go  # integration tests (//go:build integration)
+├── sqlite/
+│   ├── go.mod               # module: github.com/sunkek/samsara-components/sqlite
+│   ├── sqlite.go            # component lifecycle (Start, Stop, Health)
+│   ├── config.go            # Config, DSN construction, pool sizing
+│   ├── db.go                # DB interface, query API, transactions
+│   ├── sqlite_test.go              # unit tests (temp-file and in-memory databases)
+│   └── sqlite_integration_test.go  # integration tests (//go:build integration)
+├── docs/adr/                # architecture decision records
+├── CONTEXT.md               # glossary — the vocabulary all modules share
+├── AGENTS.md                # working guide (agents and humans alike)
 ├── scripts/
+│   ├── coverage-baseline.txt # per-module coverage floor, enforced by make coverage-check
+│   ├── seaweedfs-init.sh    # creates the test bucket once SeaweedFS is healthy
 │   └── seaweedfs-s3.json    # static credentials config for SeaweedFS integration tests
 ├── docker-compose.yml       # test infrastructure (Postgres, Redis, RabbitMQ, SeaweedFS)
 └── Makefile
@@ -97,11 +115,45 @@ make test-all       # starts infra, runs all tests, stops infra
 Every PR must pass:
 
 ```bash
-make check          # go vet + staticcheck + unit tests with race detector
-make test-all       # unit + integration
+make check           # gofmt + go vet + staticcheck + unit tests with race detector
+make test-all        # unit + integration
+make coverage-check  # per-module coverage against the recorded baseline
+make vuln            # govulncheck across all modules
 ```
 
-The CI pipeline enforces both. PRs that fail CI will not be merged.
+The CI pipeline enforces all four. PRs that fail CI will not be merged.
+
+### Coverage baseline
+
+`scripts/coverage-baseline.txt` records each module's coverage in two columns:
+unit (no Docker) and integration (`-tags integration`, services up).
+`make coverage-check` reads the unit column and fails when a module falls more
+than 2 points below it; CI runs it on every PR. If a change legitimately moves
+the numbers — including upwards — run `make coverage-update` and commit the
+file, or `make coverage-update-integration` behind `make infra-up` to refresh
+both columns.
+
+The gap between the columns is by design: `fiber`, `grpc`, and `s3` keep most of
+their behaviour behind a live server or endpoint, so a low unit number does not
+mean thin testing. Treat a *drop* as the signal, not a low number.
+
+### Ports
+
+`docker-compose.yml` publishes each service on its standard port, overridable
+per service so a machine that already runs one can move it:
+
+```bash
+SC_POSTGRES_PORT=55442 make test-integration
+```
+
+`SC_POSTGRES_PORT`, `SC_REDIS_PORT`, `SC_RABBITMQ_PORT`, and `SC_S3_PORT` are
+read by both Compose and the integration tests, so both sides move together.
+
+### Vulnerability scanning
+
+`make vuln` runs `govulncheck` per module. It fails only on advisories whose
+vulnerable symbols this code actually calls, so an unfixable advisory in a
+required-but-uncalled module reports without blocking unrelated PRs.
 
 ### Quality expectations
 

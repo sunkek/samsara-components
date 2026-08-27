@@ -95,8 +95,8 @@ func TestHealth_BeforeStart(t *testing.T) {
 // Interface compliance
 // ----------------------------------------------------------------------------
 
-func TestComponent_ImplementsClient(t *testing.T) {
-	var _ redis.Client = (*redis.Component)(nil)
+func TestComponent_ImplementsKV(t *testing.T) {
+	var _ redis.KV = (*redis.Component)(nil)
 }
 
 // ----------------------------------------------------------------------------
@@ -119,7 +119,7 @@ func TestErrNil_Sentinel(t *testing.T) {
 	}
 }
 
-// TestErrNotReady verifies that every Client operation returns ErrNotReady —
+// TestErrNotReady verifies that every KV operation returns ErrNotReady —
 // not a nil-pointer panic — when the component has no live connection (before
 // Start, after Stop, or during a restart while Redis is down).
 func TestErrNotReady_NoPanic(t *testing.T) {
@@ -183,3 +183,41 @@ func (l *testLogger) Debug(msg string, args ...any) { l.t.Log(append([]any{"DEBU
 func (l *testLogger) Info(msg string, args ...any)  { l.t.Log(append([]any{"INFO ", msg}, args...)...) }
 func (l *testLogger) Warn(msg string, args ...any)  { l.t.Log(append([]any{"WARN ", msg}, args...)...) }
 func (l *testLogger) Error(msg string, args ...any) { l.t.Log(append([]any{"ERROR", msg}, args...)...) }
+
+// ----------------------------------------------------------------------------
+// Config
+// ----------------------------------------------------------------------------
+
+// A zero-value Config must produce a usable component: every default is
+// supplied by an unexported accessor at the point of use, so New never needs a
+// populated Config.
+func TestConfig_ZeroValueNoPanic(t *testing.T) {
+	c := redis.New(redis.Config{})
+	if c == nil {
+		t.Fatal("expected non-nil component")
+	}
+	if c.Name() == "" {
+		t.Error("expected a default name")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestClient_NilBeforeStart(t *testing.T) {
+	comp := redis.New(redis.Config{})
+	if comp.Client() != nil {
+		t.Fatal("expected Client to be nil before Start")
+	}
+}
+
+func TestClient_NilAfterStop(t *testing.T) {
+	comp := redis.New(redis.Config{})
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if comp.Client() != nil {
+		t.Fatal("expected Client to be nil after Stop")
+	}
+}

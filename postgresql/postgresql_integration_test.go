@@ -16,12 +16,25 @@ import (
 	"testing"
 	"time"
 
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/sunkek/samsara-components/postgresql"
+	"os"
 )
 
-// testDSN matches the docker-compose.yml credentials.
-const testDSN = "postgres://test:test@localhost:5432/test?sslmode=disable"
+// testDSN matches the docker-compose.yml credentials. The port follows
+// SC_POSTGRES_PORT, the same variable docker-compose.yml publishes on, so a
+// machine that already has something on 5432 can move both together.
+var testDSN = fmt.Sprintf(
+	"postgres://test:test@localhost:%s/test?sslmode=disable", envPort("SC_POSTGRES_PORT", "5432"))
+
+// envPort returns the value of name, or def when it is unset.
+func envPort(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
 
 func testComp(t *testing.T) *postgresql.Component {
 	t.Helper()
@@ -284,5 +297,25 @@ func TestIntegration_Transaction_Rollback(t *testing.T) {
 	err = comp.Get(ctx, &dst, `SELECT val FROM _sc_txrb_test LIMIT 1`)
 	if !errors.Is(err, postgresql.ErrNoRows) {
 		t.Fatalf("expected ErrNoRows after rollback, got %v", err)
+	}
+}
+
+// TestIntegration_Pool_UsableAfterStart exercises the ADR-0005 escape hatch:
+// pgx features the component does not wrap must be reachable through it.
+func TestIntegration_Pool_UsableAfterStart(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	pool := comp.Pool()
+	if pool == nil {
+		t.Fatal("expected a non-nil pool after Start")
+	}
+	// CopyFrom is the canonical example of what the DB interface cannot do.
+	var n int
+	if err := pool.QueryRow(context.Background(), "select 1").Scan(&n); err != nil {
+		t.Fatalf("query through the pool: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("got %d, want 1", n)
 	}
 }

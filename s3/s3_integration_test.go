@@ -23,21 +23,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/sunkek/samsara-components/s3"
+	"os"
 )
 
 // SeaweedFS credentials and endpoint match docker-compose.yml.
 // The s3.json config file defines a single identity with key "test"/"test".
+var testEndpoint = "http://localhost:" + envPort("SC_S3_PORT", "8333")
+
+// envPort returns the value of name, or def when it is unset.
+func envPort(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
+
 const (
-	testEndpoint = "http://localhost:8333"
-	testRegion   = "us-east-1"
-	testKeyID    = "test"
-	testSecret   = "test"
-	testBucket   = "test" // created by the seaweedfs-init service
+	testRegion = "us-east-1"
+	testKeyID  = "test"
+	testSecret = "test"
+	testBucket = "test" // created by the seaweedfs-init service
 )
 
 func testComp(t *testing.T) *s3.Component {
@@ -383,3 +395,108 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// TestIntegration_Upload_LargeNonSeekableBody is the end-to-end form of #4:
+// a body that is neither seekable nor sized, over plain HTTP, larger than the
+// part size, uploaded without buffering the whole object.
+func TestIntegration_Upload_LargeNonSeekableBody(t *testing.T) {
+	const (
+		size     = 24 << 20 // 24 MiB: three parts at the 8 MiB default
+		partSize = 8 << 20
+	)
+
+	comp := testComp(t)
+	startComp(t, comp)
+
+	key := uniqueKey(t, "large.bin")
+	ctx := context.Background()
+
+	// nonSeekable hides the concrete reader type so nothing can seek or size it.
+	body := nonSeekable{io.LimitReader(byteReader{}, size)}
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	if err := comp.Upload(ctx, s3.UploadRequest{
+		Bucket: testBucket, Key: key, Body: body, ContentType: "application/octet-stream",
+	}); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	runtime.ReadMemStats(&after)
+	t.Cleanup(func() { _ = comp.Delete(ctx, testBucket, key) })
+
+	// The theoretical ceiling is (Concurrency+1) × PartSize; allow generous
+	// slack for GC and HTTP buffers, but far below the object size × 2 that
+	// a buffering implementation would allocate.
+	const allowed = (5 + 1) * partSize * 3
+	if growth := after.TotalAlloc - before.TotalAlloc; growth > allowed {
+		t.Fatalf("Upload allocated %d bytes for a %d-byte body; want at most %d",
+			growth, size, allowed)
+	}
+
+	rc, err := comp.Download(ctx, testBucket, key)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	defer rc.Close()
+	n, err := io.Copy(io.Discard, rc)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if n != size {
+		t.Fatalf("read back %d bytes, want %d", n, size)
+	}
+}
+
+// nonSeekable wraps a reader so that only Read is reachable.
+type nonSeekable struct{ r io.Reader }
+
+func (n nonSeekable) Read(p []byte) (int, error) { return n.r.Read(p) }
+
+// byteReader yields an endless stream of a recognisable non-zero byte.
+type byteReader struct{}
+
+func (byteReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'a'
+	}
+	return len(p), nil
+}
+
+// TestIntegration_Client_UsableAfterStart exercises the ADR-0005 escape hatch:
+// SDK operations the component does not wrap must be reachable through it.
+func TestIntegration_Client_UsableAfterStart(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	client := comp.Client()
+	if client == nil {
+		t.Fatal("expected a non-nil client after Start")
+	}
+
+	ctx := context.Background()
+	key := uniqueKey(t, "head.txt")
+	if err := comp.Upload(ctx, s3.UploadRequest{
+		Bucket: testBucket, Key: key, Body: strings.NewReader("hello"),
+	}); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	t.Cleanup(func() { _ = comp.Delete(ctx, testBucket, key) })
+
+	// HeadObject is the canonical example of what Storage cannot do.
+	out, err := client.HeadObject(ctx, &awss3.HeadObjectInput{
+		Bucket: ptr(testBucket),
+		Key:    &key,
+	})
+	if err != nil {
+		t.Fatalf("HeadObject through the client: %v", err)
+	}
+	if out.ContentLength == nil || *out.ContentLength != 5 {
+		t.Fatalf("HeadObject reported %v bytes, want 5", out.ContentLength)
+	}
+}
+
+// ptr returns a pointer to v.
+func ptr[T any](v T) *T { return &v }
