@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -382,4 +383,73 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// TestIntegration_Upload_LargeNonSeekableBody is the end-to-end form of #4:
+// a body that is neither seekable nor sized, over plain HTTP, larger than the
+// part size, uploaded without buffering the whole object.
+func TestIntegration_Upload_LargeNonSeekableBody(t *testing.T) {
+	const (
+		size     = 24 << 20 // 24 MiB: three parts at the 8 MiB default
+		partSize = 8 << 20
+	)
+
+	comp := testComp(t)
+	startComp(t, comp)
+
+	key := uniqueKey(t, "large.bin")
+	ctx := context.Background()
+
+	// nonSeekable hides the concrete reader type so nothing can seek or size it.
+	body := nonSeekable{io.LimitReader(byteReader{}, size)}
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	if err := comp.Upload(ctx, s3.UploadRequest{
+		Bucket: testBucket, Key: key, Body: body, ContentType: "application/octet-stream",
+	}); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	runtime.ReadMemStats(&after)
+	t.Cleanup(func() { _ = comp.Delete(ctx, testBucket, key) })
+
+	// The theoretical ceiling is (Concurrency+1) × PartSize; allow generous
+	// slack for GC and HTTP buffers, but far below the object size × 2 that
+	// a buffering implementation would allocate.
+	const allowed = (5 + 1) * partSize * 3
+	if growth := after.TotalAlloc - before.TotalAlloc; growth > allowed {
+		t.Fatalf("Upload allocated %d bytes for a %d-byte body; want at most %d",
+			growth, size, allowed)
+	}
+
+	rc, err := comp.Download(ctx, testBucket, key)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	defer rc.Close()
+	n, err := io.Copy(io.Discard, rc)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if n != size {
+		t.Fatalf("read back %d bytes, want %d", n, size)
+	}
+}
+
+// nonSeekable wraps a reader so that only Read is reachable.
+type nonSeekable struct{ r io.Reader }
+
+func (n nonSeekable) Read(p []byte) (int, error) { return n.r.Read(p) }
+
+// byteReader yields an endless stream of a recognisable non-zero byte.
+type byteReader struct{}
+
+func (byteReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'a'
+	}
+	return len(p), nil
 }

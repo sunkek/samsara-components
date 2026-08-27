@@ -56,6 +56,17 @@ type Config struct {
 	// Individual calls can override this. Defaults to 15 minutes.
 	PresignTTL time.Duration
 
+	// UploadPartSize is the multipart chunk size used by [Component.Upload].
+	// Defaults to 8 MiB; values below the S3 minimum of 5 MiB are raised to it.
+	//
+	// Peak memory per in-flight upload is roughly
+	// (UploadConcurrency+1) × UploadPartSize, independent of object size.
+	UploadPartSize int64
+
+	// UploadConcurrency is the number of parts [Component.Upload] transfers
+	// in parallel. Defaults to 5.
+	UploadConcurrency int
+
 	// PathStyleForcing enables path-style S3 addressing (bucket in URL path
 	// instead of subdomain). Required by MinIO and some other providers.
 	PathStyleForcing bool
@@ -73,6 +84,27 @@ func (c Config) presignTTL() time.Duration {
 		return c.PresignTTL
 	}
 	return 15 * time.Minute
+}
+
+// minUploadPartSize is the smallest part size S3 accepts for a multipart
+// upload other than the final part.
+const minUploadPartSize = 5 << 20
+
+func (c Config) uploadPartSize() int64 {
+	if c.UploadPartSize < minUploadPartSize {
+		if c.UploadPartSize > 0 {
+			return minUploadPartSize
+		}
+		return 8 << 20
+	}
+	return c.UploadPartSize
+}
+
+func (c Config) uploadConcurrency() int {
+	if c.UploadConcurrency > 0 {
+		return c.UploadConcurrency
+	}
+	return 5
 }
 
 // Logger is satisfied by [log/slog.Logger] and most structured loggers.
@@ -97,10 +129,11 @@ type Component struct {
 	log  Logger
 	name string
 
-	// mu guards client, presigner, and stopCh.
+	// mu guards client, presigner, engine, and stopCh.
 	mu        sync.RWMutex
 	client    *s3.Client
 	presigner *s3.PresignClient
+	engine    uploadEngine
 	stopCh    chan struct{}
 }
 
@@ -155,6 +188,12 @@ func (c *Component) getClient() *s3.Client {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.client
+}
+
+func (c *Component) getEngine() uploadEngine {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.engine
 }
 
 func (c *Component) getPresigner() *s3.PresignClient {
@@ -218,6 +257,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	c.mu.Lock()
 	c.client = client
 	c.presigner = presigner
+	c.engine = newTransferManagerEngine(client, c.cfg)
 	c.mu.Unlock()
 
 	c.log.Info("s3: connected", "endpoint", c.cfg.Endpoint, "region", c.cfg.Region)
@@ -240,6 +280,7 @@ func (c *Component) Stop(_ context.Context) error {
 	c.stopCh = closed
 	c.client = nil
 	c.presigner = nil
+	c.engine = nil
 	c.mu.Unlock()
 
 	select {

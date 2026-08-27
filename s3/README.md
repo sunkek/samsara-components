@@ -127,9 +127,11 @@ s3.Config{
     KeyID            string        // access key ID
     Secret           string        // secret access key
 
-    ConnectTimeout   time.Duration // default: 10s — startup check deadline
-    PresignTTL       time.Duration // default: 15m — presigned URL lifetime
-    PathStyleForcing bool          // default: false; set true for SeaweedFS / local servers
+    ConnectTimeout    time.Duration // default: 10s — startup check deadline
+    PresignTTL        time.Duration // default: 15m — presigned URL lifetime
+    UploadPartSize    int64         // default: 8 MiB — multipart chunk size, floor 5 MiB
+    UploadConcurrency int           // default: 5 — parts transferred in parallel
+    PathStyleForcing  bool          // default: false; set true for SeaweedFS / local servers
 }
 ```
 
@@ -148,7 +150,7 @@ s3.WithName("media-store")       // override component name
 
 | Method | Description |
 |--------|-------------|
-| `Upload(ctx, UploadRequest)` | Put an object; auto-detects MIME type |
+| `Upload(ctx, UploadRequest)` | Put an object; streams the body, auto-detects MIME type |
 | `Download(ctx, bucket, key)` | Get an object; caller closes returned `io.ReadCloser` |
 | `Delete(ctx, bucket, key)` | Remove a single object |
 | `DeleteByPrefix(ctx, bucket, prefix)` | Remove all objects under prefix; returns count |
@@ -184,6 +186,21 @@ store.Upload(ctx, s3.UploadRequest{
     ...
 })
 ```
+
+## Upload memory use
+
+`Upload` streams the body: it holds only the 512-byte sniff buffer itself,
+whatever the object size. Uploads above `UploadPartSize` are transferred as a
+multipart upload, so peak memory per in-flight upload is roughly
+
+    (UploadConcurrency + 1) x UploadPartSize
+
+— about 85 MiB at the defaults once GC slack and HTTP buffers are counted, and
+independent of how large the object is. Lower `UploadPartSize` or
+`UploadConcurrency` if many uploads run at once; raise them for throughput on
+very large objects.
+
+The body needs to be neither seekable nor of known length.
 
 ## Presigned upload constraints
 

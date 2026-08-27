@@ -20,8 +20,19 @@ across all of them.
   records).
 - `make fmt-check` and `make fmt`, with `fmt-check` wired into `make check` and
   CI — formatting drift previously reached `main` unnoticed (#6).
+- `s3.Config.UploadPartSize` (default 8 MiB, floor 5 MiB) and
+  `s3.Config.UploadConcurrency` (default 5) — the memory/throughput trade-off
+  for uploads is now tunable.
 
 ### Fixed
+- **`s3.Upload` buffered the entire object in memory.** It read the whole body
+  with `io.ReadAll` to obtain a seekable stream, so peak memory scaled with
+  object size and large uploads could exhaust the process (#4). Uploads now
+  stream through the AWS SDK's transfer manager as a multipart upload, bounded
+  by `(UploadConcurrency+1) x UploadPartSize` regardless of object size. The
+  body no longer has to be seekable or of known length, and content-type
+  sniffing now buffers only the leading 512 bytes. `Upload`'s signature is
+  unchanged.
 - Compile-time interface assertions were missing in `postgresql` and `redis`;
   `s3` and `sqlite` already had them.
 - `CONTRIBUTING.md`'s repository tree omitted `prometheus/`, `sqlite/`, and

@@ -2,7 +2,7 @@
 
 `s3.Upload` buffered every object into RAM ([#4](https://github.com/sunkek/samsara-components/issues/4)),
 so it needs a streaming engine. We take
-`github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager` v0.3.16 and reach it
+`github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager` (adopted at v0.3.17) and reach it
 only through an unexported `uploadEngine` port, so a pre-1.0 dependency cannot
 reach `s3`'s exported surface.
 

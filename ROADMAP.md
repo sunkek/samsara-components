@@ -67,17 +67,20 @@ telemetry via the core's observer hook.
 ## s3 (highest priority — caused prod incident)
 
 ### S1. `Upload` buffers the entire body into RAM
-**Status: open** — tracked as
-[#4](https://github.com/sunkek/samsara-components/issues/4).
+**Status: shipped** — [#4](https://github.com/sunkek/samsara-components/issues/4).
 
-`Upload` does `io.ReadAll(r.Body)` and wraps it in a `bytes.Reader`
-(`s3/operations.go:88`) for every upload — no streaming, no multipart path. Under
-concurrent large uploads the consuming gateway spiked to full-body-size RAM per
-in-flight request, starved its health probe, and was restarted by samsara.
-**Direction.** Add a streaming upload path (pass the `io.Reader` through to the SDK)
-and a multipart-upload path for large objects; keep the buffered path only where a
-seekable body is genuinely required (the SDK-v2 plain-HTTP checksum workaround).
-**Acceptance.** Uploading an N-GB object holds O(part size), not O(N), in memory.
+`Upload` did `io.ReadAll(r.Body)` and wrapped it in a `bytes.Reader` for every
+upload — no streaming, no multipart path. Under concurrent large uploads the
+consuming gateway spiked to full-body-size RAM per in-flight request, starved its
+health probe, and was restarted by samsara.
+
+Uploads now stream through `feature/s3/transfermanager`, held behind an
+unexported `uploadEngine` port ([ADR-0004](./docs/adr/0004-transfermanager-behind-an-internal-port.md)).
+Peak memory is `(UploadConcurrency+1) x UploadPartSize`, independent of object
+size; the body need be neither seekable nor of known length. The
+"seekable body" constraint the old code cited was real but was satisfiable
+without buffering — see
+[the research note](./docs/research/aws-sdk-v2-s3-streaming-and-checksums.md).
 
 ### S2. No `*s3.Client` accessor and a thin `UploadRequest`
 `getClient` is private (`s3/s3.go:150`) and `UploadRequest` (`s3/operations.go:17`)
