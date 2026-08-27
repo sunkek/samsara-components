@@ -20,6 +20,13 @@
 
 MODULES := $(shell find . -name go.mod -not -path './.git/*' | xargs -I{} dirname {})
 
+# Tool versions are pinned so CI and local runs agree, and so a new upstream
+# release cannot break the build on its own schedule. `go run pkg@version`
+# resolves through the module cache, which means no install step and no stale
+# binary already on PATH.
+STATICCHECK         ?= honnef.co/go/tools/cmd/staticcheck@v0.8.1
+GOVULNCHECK         ?= golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
 COVERAGE_BASELINE   ?= scripts/coverage-baseline.txt
 COVERAGE_TOLERANCE  ?= 2.0
 
@@ -53,20 +60,18 @@ vet:
 
 .PHONY: lint
 lint:
-	@which staticcheck > /dev/null 2>&1 || go install honnef.co/go/tools/cmd/staticcheck@latest
 	@for mod in $(MODULES); do \
 		echo "▶ staticcheck: $$mod"; \
-		(cd $$mod && staticcheck ./...); \
+		(cd $$mod && go run $(STATICCHECK) ./...); \
 	done
 
 # govulncheck fails only on advisories whose vulnerable symbols this code calls;
 # an advisory in a required-but-uncalled module is reported without failing.
 .PHONY: vuln
 vuln:
-	@which govulncheck > /dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
 	@for mod in $(MODULES); do \
 		echo "▶ govulncheck: $$mod"; \
-		(cd $$mod && govulncheck ./...); \
+		(cd $$mod && go run $(GOVULNCHECK) ./...); \
 	done
 
 .PHONY: check
