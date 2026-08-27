@@ -29,16 +29,26 @@ import (
 	"time"
 
 	"github.com/sunkek/samsara-components/s3"
+	"os"
 )
 
 // SeaweedFS credentials and endpoint match docker-compose.yml.
 // The s3.json config file defines a single identity with key "test"/"test".
+var testEndpoint = "http://localhost:" + envPort("SC_S3_PORT", "8333")
+
+// envPort returns the value of name, or def when it is unset.
+func envPort(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
+
 const (
-	testEndpoint = "http://localhost:8333"
-	testRegion   = "us-east-1"
-	testKeyID    = "test"
-	testSecret   = "test"
-	testBucket   = "test" // created by the seaweedfs-init service
+	testRegion = "us-east-1"
+	testKeyID  = "test"
+	testSecret = "test"
+	testBucket = "test" // created by the seaweedfs-init service
 )
 
 func testComp(t *testing.T) *s3.Component {

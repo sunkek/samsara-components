@@ -16,12 +16,25 @@ import (
 	"testing"
 	"time"
 
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/sunkek/samsara-components/postgresql"
+	"os"
 )
 
-// testDSN matches the docker-compose.yml credentials.
-const testDSN = "postgres://test:test@localhost:5432/test?sslmode=disable"
+// testDSN matches the docker-compose.yml credentials. The port follows
+// SC_POSTGRES_PORT, the same variable docker-compose.yml publishes on, so a
+// machine that already has something on 5432 can move both together.
+var testDSN = fmt.Sprintf(
+	"postgres://test:test@localhost:%s/test?sslmode=disable", envPort("SC_POSTGRES_PORT", "5432"))
+
+// envPort returns the value of name, or def when it is unset.
+func envPort(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
 
 func testComp(t *testing.T) *postgresql.Component {
 	t.Helper()

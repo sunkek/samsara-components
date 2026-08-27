@@ -27,12 +27,27 @@ import (
 	"github.com/sunkek/samsara-components/redis"
 )
 
-const testAddr = "localhost:6379" // matches docker-compose.yml (no auth)
+// testAddr matches docker-compose.yml (no auth). The port follows
+// SC_REDIS_PORT, the same variable docker-compose.yml publishes on.
+var (
+	testPort = envPortInt("SC_REDIS_PORT", 6379)
+	testAddr = fmt.Sprintf("localhost:%d", testPort)
+)
+
+// envPortInt returns the value of name parsed as a port, or def when it is
+// unset or unparseable.
+func envPortInt(name string, def int) int {
+	v, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || v <= 0 {
+		return def
+	}
+	return v
+}
 
 func testComp(t *testing.T) *redis.Component {
 	t.Helper()
 	return redis.New(
-		redis.Config{Host: "localhost", Port: 6379, ConnectTimeout: 10 * time.Second},
+		redis.Config{Host: "localhost", Port: testPort, ConnectTimeout: 10 * time.Second},
 		redis.WithLogger(&testLogger{t}),
 	)
 }

@@ -23,9 +23,14 @@ across all of them.
 - `make vuln` (`govulncheck` per module) and a CI job running it — nine
   dependency trees had nothing checking pinned versions against published
   advisories (#7).
-- `scripts/coverage-baseline.txt` with `make coverage-check` and
-  `make coverage-update`, wired into CI: per-module coverage now has a recorded
-  floor, so a drop is visible instead of silent (#8).
+- `scripts/coverage-baseline.txt` with `make coverage-check`,
+  `make coverage-update`, and `make coverage-update-integration`, wired into CI:
+  per-module coverage now has a recorded floor in both the unit and integration
+  columns, so a drop is visible instead of silent (#8).
+- `SC_POSTGRES_PORT`, `SC_REDIS_PORT`, `SC_RABBITMQ_PORT`, and `SC_S3_PORT` —
+  host ports for the integration services, read by both `docker-compose.yml` and
+  the integration tests, so a machine already running one of them can move it
+  without editing tracked files.
 - `s3.Config.UploadPartSize` (default 8 MiB, floor 5 MiB) and
   `s3.Config.UploadConcurrency` (default 5) — the memory/throughput trade-off
   for uploads is now tunable.

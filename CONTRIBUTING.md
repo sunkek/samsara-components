@@ -125,14 +125,29 @@ The CI pipeline enforces all four. PRs that fail CI will not be merged.
 
 ### Coverage baseline
 
-`scripts/coverage-baseline.txt` records each module's unit-test coverage.
-`make coverage-check` fails when a module falls more than 2 points below its
-line; CI runs it on every PR. If a change legitimately moves the numbers —
-including upwards — run `make coverage-update` and commit the new file.
+`scripts/coverage-baseline.txt` records each module's coverage in two columns:
+unit (no Docker) and integration (`-tags integration`, services up).
+`make coverage-check` reads the unit column and fails when a module falls more
+than 2 points below it; CI runs it on every PR. If a change legitimately moves
+the numbers — including upwards — run `make coverage-update` and commit the
+file, or `make coverage-update-integration` behind `make infra-up` to refresh
+both columns.
 
-Absolute values differ widely by design: `fiber`, `grpc`, and `s3` keep most of
-their behaviour behind a live server or endpoint, reachable only under
-`-tags integration`. Treat a *drop* as the signal, not a low number.
+The gap between the columns is by design: `fiber`, `grpc`, and `s3` keep most of
+their behaviour behind a live server or endpoint, so a low unit number does not
+mean thin testing. Treat a *drop* as the signal, not a low number.
+
+### Ports
+
+`docker-compose.yml` publishes each service on its standard port, overridable
+per service so a machine that already runs one can move it:
+
+```bash
+SC_POSTGRES_PORT=55442 make test-integration
+```
+
+`SC_POSTGRES_PORT`, `SC_REDIS_PORT`, `SC_RABBITMQ_PORT`, and `SC_S3_PORT` are
+read by both Compose and the integration tests, so both sides move together.
 
 ### Vulnerability scanning
 

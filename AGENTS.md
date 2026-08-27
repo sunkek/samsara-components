@@ -71,7 +71,9 @@ change moves the numbers in either direction, run `make coverage-update` and
 commit the file.
 
 Integration tests need the Docker services in `docker-compose.yml`;
-`make test-integration` brings them up and down around the run.
+`make test-integration` brings them up and down around the run. If a host port
+is already taken, override it — `SC_POSTGRES_PORT`, `SC_REDIS_PORT`,
+`SC_RABBITMQ_PORT`, `SC_S3_PORT` are read by both Compose and the tests.
 
 One module at a time:
 

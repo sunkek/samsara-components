@@ -9,7 +9,8 @@
 #   make vuln              — govulncheck across all modules
 #   make coverage          — unit tests with coverage report
 #   make coverage-check    — fail if any module drops below its recorded baseline
-#   make coverage-update   — rewrite the baseline from the current numbers
+#   make coverage-update   — rewrite the baseline's unit column
+#   make coverage-update-integration — rewrite both columns (needs Docker)
 #   make check             — fmt-check + vet + lint + test-race (run before pushing)
 #   make infra-up          — start Docker Compose services
 #   make infra-down        — stop and remove containers
@@ -126,10 +127,28 @@ coverage-update:
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
 		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
-		echo "$$mod $$pct" >> $$tmp; \
+		integ=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$3}'); \
+		echo "$$mod $$pct $$integ" >> $$tmp; \
 	done; \
 	mv $$tmp $(COVERAGE_BASELINE); \
-	echo "▶ baseline written to $(COVERAGE_BASELINE)"
+	echo "▶ baseline written to $(COVERAGE_BASELINE) (unit column)"
+
+# Both columns. Needs the docker-compose services up; run behind infra-up, or
+# use `make infra-up && make coverage-update-integration && make infra-down`.
+.PHONY: coverage-update-integration
+coverage-update-integration:
+	@tmp=$$(mktemp); \
+	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
+	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
+		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
+		integ=$$(cd $$mod && go test -tags integration -timeout=$(INTEGRATION_TIMEOUT) \
+			-coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
+		echo "$$mod $$pct $$integ" >> $$tmp; \
+	done; \
+	mv $$tmp $(COVERAGE_BASELINE); \
+	echo "▶ baseline written to $(COVERAGE_BASELINE) (both columns)"
 
 # ── Integration tests ─────────────────────────────────────────────────────────
 

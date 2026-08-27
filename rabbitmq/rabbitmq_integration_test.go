@@ -23,10 +23,20 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sunkek/samsara-components/rabbitmq"
+	"os"
 )
 
-// testURI matches the docker-compose.yml credentials.
-const testURI = "amqp://test:test@localhost:5672/test"
+// testURI matches the docker-compose.yml credentials. The port follows
+// SC_RABBITMQ_PORT, the same variable docker-compose.yml publishes on.
+var testURI = fmt.Sprintf("amqp://test:test@localhost:%s/test", envPort("SC_RABBITMQ_PORT", "5672"))
+
+// envPort returns the value of name, or def when it is unset.
+func envPort(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
 
 func testComp(t *testing.T) *rabbitmq.Component {
 	t.Helper()
