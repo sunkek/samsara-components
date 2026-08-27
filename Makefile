@@ -27,6 +27,11 @@ MODULES := $(shell find . -name go.mod -not -path './.git/*' | xargs -I{} dirnam
 STATICCHECK         ?= honnef.co/go/tools/cmd/staticcheck@v0.8.1
 GOVULNCHECK         ?= golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
+# Coverage percentages shift between Go releases, so the baseline is recorded
+# against the version CI pins in .github/workflows/ci.yml. Regenerating with a
+# different toolchain will produce numbers CI does not agree with.
+COVERAGE_TOOLCHAIN  ?= go1.27.0
+
 COVERAGE_BASELINE   ?= scripts/coverage-baseline.txt
 COVERAGE_TOLERANCE  ?= 2.0
 
@@ -105,7 +110,7 @@ coverage:
 coverage-check:
 	@fail=0; \
 	for mod in $(MODULES); do \
-		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		base=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$2}'); \
 		if [ -z "$$base" ]; then \
@@ -130,7 +135,7 @@ coverage-update:
 	@tmp=$$(mktemp); \
 	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
-		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		integ=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$3}'); \
 		echo "$$mod $$pct $$integ" >> $$tmp; \
@@ -145,9 +150,9 @@ coverage-update-integration:
 	@tmp=$$(mktemp); \
 	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
-		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
-		integ=$$(cd $$mod && go test -tags integration -timeout=$(INTEGRATION_TIMEOUT) \
+		integ=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -tags integration -timeout=$(INTEGRATION_TIMEOUT) \
 			-coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		echo "$$mod $$pct $$integ" >> $$tmp; \
