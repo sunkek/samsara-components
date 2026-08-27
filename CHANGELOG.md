@@ -8,9 +8,10 @@ across all of them.
 
 ---
 
-## [Unreleased]
+## Repository — 2026-08-27
 
-Repository-wide tooling and documentation; no module version depends on these.
+Tooling and documentation shared by every module. Nothing here carries a
+version: only the component modules are tagged.
 
 ### Added
 - `CONTEXT.md` (shared vocabulary) and `docs/adr/` (five decision records).
@@ -33,6 +34,16 @@ Repository-wide tooling and documentation; no module version depends on these.
   `s3/storage.go`; `AGENTS.md`'s module list omitted `prometheus` and `sqlite`.
 - ROADMAP items cited line numbers that no longer matched, and four of them
   described gaps that have since been closed.
+- CI built on `go.work`'s `go 1.25.0`, which is the language minimum rather
+  than a toolchain to build with. That shipped an unpatched standard library —
+  `govulncheck` failed on 21 stdlib advisories fixed in go1.25.13 — and
+  `staticcheck@latest` (v0.8.1) refused to install at all, since it requires
+  go1.26. CI now builds on go1.27.x, and both tool versions are pinned in the
+  Makefile so a local run checks exactly what CI checks.
+- The coverage gate compared numbers across Go versions. Percentages move
+  between releases — go1.27 shifted `grpcclient` +6.7 and `fiber` -2.3 with no
+  test changes — so the coverage targets now force the same toolchain CI pins,
+  and the baseline records which one it was measured with.
 
 ---
 

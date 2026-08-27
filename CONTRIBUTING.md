@@ -133,6 +133,12 @@ the numbers — including upwards — run `make coverage-update` and commit the
 file, or `make coverage-update-integration` behind `make infra-up` to refresh
 both columns.
 
+Both columns are recorded with the Go version CI pins (`COVERAGE_TOOLCHAIN` in
+the Makefile, `go-version` in `.github/workflows/ci.yml`), because coverage
+percentages shift between Go releases — enough to trip the gate on their own.
+The coverage targets force that toolchain, so a local run matches CI even on a
+different default Go.
+
 The gap between the columns is by design: `fiber`, `grpc`, and `s3` keep most of
 their behaviour behind a live server or endpoint, so a low unit number does not
 mean thin testing. Treat a *drop* as the signal, not a low number.

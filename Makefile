@@ -20,6 +20,18 @@
 
 MODULES := $(shell find . -name go.mod -not -path './.git/*' | xargs -I{} dirname {})
 
+# Tool versions are pinned so CI and local runs agree, and so a new upstream
+# release cannot break the build on its own schedule. `go run pkg@version`
+# resolves through the module cache, which means no install step and no stale
+# binary already on PATH.
+STATICCHECK         ?= honnef.co/go/tools/cmd/staticcheck@v0.8.1
+GOVULNCHECK         ?= golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+# Coverage percentages shift between Go releases, so the baseline is recorded
+# against the version CI pins in .github/workflows/ci.yml. Regenerating with a
+# different toolchain will produce numbers CI does not agree with.
+COVERAGE_TOOLCHAIN  ?= go1.27.0
+
 COVERAGE_BASELINE   ?= scripts/coverage-baseline.txt
 COVERAGE_TOLERANCE  ?= 2.0
 
@@ -53,20 +65,18 @@ vet:
 
 .PHONY: lint
 lint:
-	@which staticcheck > /dev/null 2>&1 || go install honnef.co/go/tools/cmd/staticcheck@latest
 	@for mod in $(MODULES); do \
 		echo "▶ staticcheck: $$mod"; \
-		(cd $$mod && staticcheck ./...); \
+		(cd $$mod && go run $(STATICCHECK) ./...); \
 	done
 
 # govulncheck fails only on advisories whose vulnerable symbols this code calls;
 # an advisory in a required-but-uncalled module is reported without failing.
 .PHONY: vuln
 vuln:
-	@which govulncheck > /dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
 	@for mod in $(MODULES); do \
 		echo "▶ govulncheck: $$mod"; \
-		(cd $$mod && govulncheck ./...); \
+		(cd $$mod && go run $(GOVULNCHECK) ./...); \
 	done
 
 .PHONY: check
@@ -100,7 +110,7 @@ coverage:
 coverage-check:
 	@fail=0; \
 	for mod in $(MODULES); do \
-		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		base=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$2}'); \
 		if [ -z "$$base" ]; then \
@@ -125,7 +135,7 @@ coverage-update:
 	@tmp=$$(mktemp); \
 	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
-		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		integ=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$3}'); \
 		echo "$$mod $$pct $$integ" >> $$tmp; \
@@ -140,9 +150,9 @@ coverage-update-integration:
 	@tmp=$$(mktemp); \
 	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
-		pct=$$(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
-		integ=$$(cd $$mod && go test -tags integration -timeout=$(INTEGRATION_TIMEOUT) \
+		integ=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -tags integration -timeout=$(INTEGRATION_TIMEOUT) \
 			-coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		echo "$$mod $$pct $$integ" >> $$tmp; \
