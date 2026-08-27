@@ -175,6 +175,22 @@ var (
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
 
+// Client returns the underlying [*redis.Client] from go-redis — the escape
+// hatch for features this component does not wrap: pipelines, Lua EVAL,
+// hashes, sets, streams, pub/sub.
+//
+// Note the two meanings of the name: the [Client] type in this package is the
+// narrow interface domain adapters depend on, while this method returns the
+// go-redis handle. Adapters should keep depending on the interface.
+//
+// It returns nil before [Component.Start] and after [Component.Stop]. Callers
+// that need the handle at startup should depend on this component via
+// samsara.WithDependencies so Start has already run.
+//
+// Operating on the handle directly bypasses this component's logging and
+// lifecycle handling.
+func (c *Component) Client() *redis.Client { return c.getClient() }
+
 // getClient returns the current client under a read lock.
 func (c *Component) getClient() *redis.Client {
 	c.mu.RLock()

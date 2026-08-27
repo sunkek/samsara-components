@@ -107,6 +107,23 @@ redis.WithName("session-store")     // override component name
 
 ---
 
+## Escape hatch
+
+`Client() *redis.Client` returns the go-redis handle for features the `Client`
+interface does not cover — pipelines, Lua `EVAL`, hashes, sets, streams,
+pub/sub.
+
+```go
+h := rdb.Client() // nil before Start and after Stop
+pipe := h.Pipeline()
+```
+
+Note the name appears twice with different meanings: the `Client` *interface* is
+what domain adapters should depend on; the `Client()` *method* is the driver
+handle. See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## API reference
 
 ### `Client` interface

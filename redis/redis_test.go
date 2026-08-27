@@ -200,3 +200,24 @@ func TestConfig_ZeroValueNoPanic(t *testing.T) {
 		t.Error("expected a default name")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestClient_NilBeforeStart(t *testing.T) {
+	comp := redis.New(redis.Config{})
+	if comp.Client() != nil {
+		t.Fatal("expected Client to be nil before Start")
+	}
+}
+
+func TestClient_NilAfterStop(t *testing.T) {
+	comp := redis.New(redis.Config{})
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if comp.Client() != nil {
+		t.Fatal("expected Client to be nil after Stop")
+	}
+}

@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/sunkek/samsara-components/s3"
 	"os"
 )
@@ -463,3 +464,39 @@ func (byteReader) Read(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// TestIntegration_Client_UsableAfterStart exercises the ADR-0005 escape hatch:
+// SDK operations the component does not wrap must be reachable through it.
+func TestIntegration_Client_UsableAfterStart(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	client := comp.Client()
+	if client == nil {
+		t.Fatal("expected a non-nil client after Start")
+	}
+
+	ctx := context.Background()
+	key := uniqueKey(t, "head.txt")
+	if err := comp.Upload(ctx, s3.UploadRequest{
+		Bucket: testBucket, Key: key, Body: strings.NewReader("hello"),
+	}); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	t.Cleanup(func() { _ = comp.Delete(ctx, testBucket, key) })
+
+	// HeadObject is the canonical example of what Storage cannot do.
+	out, err := client.HeadObject(ctx, &awss3.HeadObjectInput{
+		Bucket: ptr(testBucket),
+		Key:    &key,
+	})
+	if err != nil {
+		t.Fatalf("HeadObject through the client: %v", err)
+	}
+	if out.ContentLength == nil || *out.ContentLength != 5 {
+		t.Fatalf("HeadObject reported %v bytes, want 5", out.ContentLength)
+	}
+}
+
+// ptr returns a pointer to v.
+func ptr[T any](v T) *T { return &v }

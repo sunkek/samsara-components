@@ -144,6 +144,25 @@ s3.WithName("media-store")       // override component name
 
 ---
 
+## Escape hatch
+
+`Client() *s3.Client` returns the AWS SDK service client for operations
+`Storage` does not cover — `CopyObject`, `HeadObject`, range GETs, versioning,
+bucket administration.
+
+```go
+c := store.Client() // nil before Start and after Stop
+out, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &b, Key: &k})
+```
+
+This is the GA service client. Uploads run through a pre-1.0 transfer manager
+that is deliberately not exported —
+[ADR-0004](../docs/adr/0004-transfermanager-behind-an-internal-port.md); the
+accessor itself follows
+[ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## API reference
 
 ### Operations

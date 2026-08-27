@@ -581,3 +581,33 @@ func TestIntegration_TLS_Start(t *testing.T) {
 
 // Compile-time check that testAddr is used (avoids "declared but not used").
 var _ = testAddr
+
+// TestIntegration_Client_UsableAfterStart exercises the ADR-0005 escape hatch:
+// go-redis features the component does not wrap must be reachable through it.
+func TestIntegration_Client_UsableAfterStart(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	client := comp.Client()
+	if client == nil {
+		t.Fatal("expected a non-nil client after Start")
+	}
+	// A pipeline is unreachable through the Client interface.
+	ctx := context.Background()
+	key := uniqueKey(t, "pipelined")
+	pipe := client.Pipeline()
+	pipe.Set(ctx, key, "v", time.Minute)
+	pipe.Expire(ctx, key, time.Hour)
+	if _, err := pipe.Exec(ctx); err != nil {
+		t.Fatalf("pipeline through the client: %v", err)
+	}
+	t.Cleanup(func() { _, _ = comp.Del(ctx, key) })
+
+	got, err := comp.Get(ctx, key)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got != "v" {
+		t.Fatalf("got %q, want %q", got, "v")
+	}
+}

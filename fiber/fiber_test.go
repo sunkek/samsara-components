@@ -152,3 +152,24 @@ func (l *testLogger) Debug(msg string, args ...any) { l.t.Log(append([]any{"DEBU
 func (l *testLogger) Info(msg string, args ...any)  { l.t.Log(append([]any{"INFO ", msg}, args...)...) }
 func (l *testLogger) Warn(msg string, args ...any)  { l.t.Log(append([]any{"WARN ", msg}, args...)...) }
 func (l *testLogger) Error(msg string, args ...any) { l.t.Log(append([]any{"ERROR", msg}, args...)...) }
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestApp_NilBeforeStart(t *testing.T) {
+	comp := sc.New(sc.Config{})
+	if comp.App() != nil {
+		t.Fatal("expected App to be nil before Start")
+	}
+}
+
+func TestApp_NilAfterStop(t *testing.T) {
+	comp := sc.New(sc.Config{})
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if comp.App() != nil {
+		t.Fatal("expected App to be nil after Stop")
+	}
+}

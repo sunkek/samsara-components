@@ -299,3 +299,23 @@ func TestIntegration_Transaction_Rollback(t *testing.T) {
 		t.Fatalf("expected ErrNoRows after rollback, got %v", err)
 	}
 }
+
+// TestIntegration_Pool_UsableAfterStart exercises the ADR-0005 escape hatch:
+// pgx features the component does not wrap must be reachable through it.
+func TestIntegration_Pool_UsableAfterStart(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	pool := comp.Pool()
+	if pool == nil {
+		t.Fatal("expected a non-nil pool after Start")
+	}
+	// CopyFrom is the canonical example of what the DB interface cannot do.
+	var n int
+	if err := pool.QueryRow(context.Background(), "select 1").Scan(&n); err != nil {
+		t.Fatalf("query through the pool: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("got %d, want 1", n)
+	}
+}

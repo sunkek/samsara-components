@@ -183,6 +183,18 @@ var (
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
 
+// Pool returns the underlying [*pgxpool.Pool] — the escape hatch for pgx
+// features this component does not wrap: CopyFrom, LISTEN/NOTIFY, batched
+// queries, custom row handling.
+//
+// It returns nil before [Component.Start] and after [Component.Stop]. Callers
+// that need the pool at startup should depend on this component via
+// samsara.WithDependencies so Start has already run.
+//
+// Operating on the pool directly bypasses this component's logging and
+// lifecycle handling; prefer the [DB] interface for anything it covers.
+func (c *Component) Pool() *pgxpool.Pool { return c.getPool() }
+
 // pool returns the current pool under a read lock.
 func (c *Component) getPool() *pgxpool.Pool {
 	c.mu.RLock()

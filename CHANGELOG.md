@@ -30,6 +30,13 @@ across all of them.
   host ports for the integration services, read by both `docker-compose.yml` and
   the integration tests, so a machine already running one of them can move it
   without editing tracked files.
+- **Driver escape hatches**: `postgresql.Pool() *pgxpool.Pool`,
+  `redis.Client() *redis.Client`, `s3.Client() *s3.Client`, and
+  `fiber.App() *fiber.App`, matching the existing `grpcclient.Conn()`. Each
+  returns nil outside the started lifecycle and is documented as the route to
+  driver features the narrow interfaces do not cover
+  ([ADR-0005](docs/adr/0005-driver-escape-hatch-accessors.md)). Closes ROADMAP
+  P1, F1, and the accessor halves of R1 and S2.
 - `s3.Config.UploadPartSize` (default 8 MiB, floor 5 MiB) and
   `s3.Config.UploadConcurrency` (default 5) — the memory/throughput trade-off
   for uploads is now tunable.

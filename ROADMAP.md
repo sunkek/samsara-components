@@ -83,13 +83,15 @@ without buffering — see
 [the research note](./docs/research/aws-sdk-v2-s3-streaming-and-checksums.md).
 
 ### S2. No `*s3.Client` accessor and a thin `UploadRequest`
+**Status: partly shipped** — the accessor landed; `UploadRequest` is unchanged.
+
 `getClient` is private (`s3/s3.go:150`) and `UploadRequest` (`s3/operations.go:17`)
 has no fields for SSE, object metadata, tagging, or explicit `Content-Length`.
 `CopyObject`, `HeadObject`, range-GET, versioning, and multipart are all unreachable.
-**Direction.** Settled by
-[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md): export
-`Client() *s3.Client`, and add metadata/SSE/tagging fields to `UploadRequest`
-for the uses common enough to deserve wrapping.
+**Direction.** `Client() *s3.Client` shipped, per
+[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md). Still open:
+metadata/SSE/tagging fields on `UploadRequest`, for the uses common enough to
+deserve wrapping.
 
 ### S3. `Health` HeadBuckets a synthetic bucket and treats 403 as healthy
 `Health` re-runs `verifyConnectivity` (`s3/s3.go:251,259`), which issues
@@ -117,8 +119,8 @@ accessor. **Historical downstream cost (now resolved):** the consuming gateway's
 limiter could not express an atomic `INCR`+`EXPIRE` and fell back to a racy
 read-modify-write `Set` (gateway
 `internal/component/ratelimit/ratelimit.go:112`). `Incr` closed that.
-**Direction for the remainder.** Export `Client() *redis.Client`, per
-[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md), and add
+**Direction for the remainder.** `Client() *redis.Client` shipped, per
+[ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md). Still open: add
 `DecrBy`/`IncrBy`, pipelines, or a Lua helper as concrete needs appear.
 
 ### R2. No cluster / sentinel / failover support
@@ -141,6 +143,8 @@ keyspace scan is unbounded memory. **Direction.** Add a streaming/callback varia
 ## postgresql
 
 ### P1. No exported `Pool()` accessor
+**Status: shipped** — `Pool() *pgxpool.Pool`, per ADR-0005.
+
 `getPool` is private (`postgresql/postgresql.go:183`); the `DB` interface covers
 `Select`/`Get`/`Exec`/`BeginTx` only. `CopyFrom` (bulk load), `LISTEN`/`NOTIFY`,
 batched queries, and custom row handling are unreachable. **Direction.** Export `Pool() *pgxpool.Pool`, per
@@ -168,6 +172,10 @@ mirroring redis.
 ## fiber
 
 ### F1. No `*gf.App` accessor; routes must be registered before `Start`
+**Status: partly shipped** — `App() *fiber.App` landed, per ADR-0005, but it is
+read-only in practice: the app exists only once `Start` is listening, so routes
+still have to go through `Register`/`Use`. The ordering constraint stands.
+
 `Register`/`Use` are the only injection points and must run pre-`Start`; there is no
 accessor to the underlying `*fiber.App`, so any Fiber feature the component doesn't
 surface is unreachable. **Direction.** Export `App() *fiber.App`, per

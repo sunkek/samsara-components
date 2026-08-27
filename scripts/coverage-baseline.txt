@@ -12,12 +12,12 @@
 # The gap between the columns is not a gap in testing: fiber, grpc, and s3 keep
 # most of their behaviour behind a live server or endpoint, so it is reachable
 # only under -tags integration. A number that *falls* is the signal to act on.
-./fiber 27.9 78.2
+./fiber 29.2 78.6
 ./grpc 29.2 74.5
 ./grpcclient 61.5 76.2
-./postgresql 65.4 89.4
+./postgresql 65.7 89.5
 ./prometheus 81.5 81.5
 ./rabbitmq 49.5 71.8
-./redis 57.4 89.3
-./s3 26.1 80.7
+./redis 57.6 89.4
+./s3 26.4 80.8
 ./sqlite 84.6 88.1

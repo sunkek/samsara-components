@@ -183,3 +183,24 @@ func TestConfig_ZeroValueNoPanic(t *testing.T) {
 		t.Error("expected a default name")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestPool_NilBeforeStart(t *testing.T) {
+	comp := postgresql.New(postgresql.Config{})
+	if comp.Pool() != nil {
+		t.Fatal("expected Pool to be nil before Start")
+	}
+}
+
+func TestPool_NilAfterStop(t *testing.T) {
+	comp := postgresql.New(postgresql.Config{})
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if comp.Pool() != nil {
+		t.Fatal("expected Pool to be nil after Stop")
+	}
+}

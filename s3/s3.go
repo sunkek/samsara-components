@@ -184,6 +184,19 @@ var (
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
 
+// Client returns the underlying [*s3.Client] from the AWS SDK — the escape
+// hatch for operations this component does not wrap: CopyObject, HeadObject,
+// range GETs, versioning, bucket administration.
+//
+// It returns nil before [Component.Start] and after [Component.Stop]. Callers
+// that need the handle at startup should depend on this component via
+// samsara.WithDependencies so Start has already run.
+//
+// This is the GA service client, not the upload engine: uploads run through a
+// pre-1.0 transfer manager that is deliberately not exported. See
+// docs/adr/0004-transfermanager-behind-an-internal-port.md.
+func (c *Component) Client() *s3.Client { return c.getClient() }
+
 func (c *Component) getClient() *s3.Client {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
