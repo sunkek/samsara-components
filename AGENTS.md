@@ -37,6 +37,9 @@ settled, and the reasons are not visible in the code:
 - [ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md) — why every
   component exports an accessor for its driver handle, and what that accessor
   may not be attached to.
+- [ADR-0006](./docs/adr/0006-metrics-behind-the-narrow-interface.md) — why
+  metrics go behind `DB`/`KV`/`Storage`/`Publisher` instead of on a new
+  exported collector seam.
 
 ## Conventions
 
