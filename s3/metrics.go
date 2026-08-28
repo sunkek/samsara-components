@@ -1,6 +1,9 @@
 package s3
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Operation names reported to [Config.OnOperation]. They are fixed per method
 // and never derived from a bucket, key, or prefix, which are unbounded and
@@ -40,13 +43,20 @@ func (c *Component) record(op string, d time.Duration, err error) {
 // component has three of them — the client, the presigner, and the upload
 // engine — and which one an operation needs is the operation's own business.
 // The not-initialised check therefore stays inside fn, where it already was.
+// Because the check is inside fn rather than ahead of it, the elapsed time is
+// discarded when fn reports [ErrNotReady]: the operation was not attempted, so
+// it is reported with a zero duration like every other module's.
 //
-// Timing covers everything the exported method does, including argument
-// validation, because that is the latency the caller experiences.
+// Timing otherwise covers everything the exported method does, including
+// argument validation, because that is the latency the caller experiences.
 func observe[T any](c *Component, op string, fn func() (T, error)) (T, error) {
 	start := time.Now()
 	v, err := fn()
-	c.record(op, time.Since(start), err)
+	d := time.Since(start)
+	if errors.Is(err, ErrNotReady) {
+		d = 0
+	}
+	c.record(op, d, err)
 	return v, err
 }
 
