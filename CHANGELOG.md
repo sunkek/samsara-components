@@ -8,6 +8,45 @@ across all of them.
 
 ---
 
+## redis/v0.7.1, postgresql/v0.4.1, s3/v0.4.1, sqlite/v0.2.1, rabbitmq/v0.5.1 — 2026-08-28
+
+Follow-up to the metrics seam: two components did not honour the zero-duration
+rule the release claimed, and the `s3` sentinel did not match the other four.
+
+### Fixed
+- **s3, rabbitmq:** an unattempted operation reported the elapsed wall time of
+  the not-ready check instead of a zero duration, putting a meaningless sample
+  in the latency distribution. Both hold the handle check inside the wrapped
+  function rather than ahead of it, so the observed duration is now discarded
+  when the call reports `ErrNotReady`. `redis`, `postgresql` and `sqlite` were
+  already correct. This makes the previous entry's "reported to the sink with a
+  zero duration" true for all five.
+
+### Changed
+- **s3 (error text):** `ErrNotReady` now carries the module tag itself —
+  `"s3: client not initialised"` — and every `Storage` operation returns it
+  bare, matching `redis`, `postgresql`, `sqlite` and `rabbitmq`. Operations
+  previously wrapped it with a per-operation prefix (`"s3 download: ..."`) and
+  `Health` used a third form, so one module had three shapes. `errors.Is(err,
+  s3.ErrNotReady)` is unaffected; text matched against literally is not. The
+  operation name is still reported — through `Config.OnOperation`, which is
+  where it now belongs.
+
+`redis`, `postgresql` and `sqlite` change in doc comments only; they are tagged
+so the coverage caveat below reaches pkg.go.dev with the fix, not at some later
+release.
+
+### Documentation
+- Each narrow interface (`KV`, `DB`, `Storage`, `Publisher`) and each driver
+  accessor (`Client()`, `Pool()`) now states that metrics cover calls through
+  the interface only, closing the consequence ADR-0006 recorded but did not
+  deliver.
+- `README.md` for all five gains a Metrics section and the `OnOperation` field,
+  and `sqlite`, `s3` and `rabbitmq` gain a Sentinel errors section for the newly
+  exported `ErrNotReady`.
+
+---
+
 ## redis/v0.7.0, postgresql/v0.4.0, s3/v0.4.0, sqlite/v0.2.0, rabbitmq/v0.5.0 — 2026-08-28
 
 The five components with a narrow interface gain a metrics seam and a shared

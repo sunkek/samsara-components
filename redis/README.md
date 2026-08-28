@@ -75,6 +75,8 @@ redis.Config{
     TLSServerName         string // SNI / hostname verification target; defaults to Host
     TLSInsecureSkipVerify bool   // disable cert verification (dev/debug only)
     TLSMinVersion         string // "1.2" (default) or "1.3"
+
+    OnOperation func(op string, d time.Duration, err error) // default: nil — see Metrics
 }
 ```
 
@@ -144,7 +146,8 @@ deliberately does not cover. See
 ### Sentinel errors
 
 ```go
-errors.Is(err, redis.ErrNil) // key does not exist (Get returns this)
+errors.Is(err, redis.ErrNil)      // key does not exist (Get returns this)
+errors.Is(err, redis.ErrNotReady) // no live connection; the call was not attempted
 ```
 
 ---
@@ -181,3 +184,30 @@ func (m *mockRedis) Get(_ context.Context, key string) (string, error) {
     return "", redis.ErrNil
 }
 ```
+
+---
+
+## Metrics
+
+`Config.OnOperation` is called once per completed `KV` operation with a fixed
+operation name, how long the call took, and the error it returned. It defaults to
+nil, which disables reporting entirely.
+
+```go
+c := redis.New(redis.Config{
+    OnOperation: func(op string, d time.Duration, err error) {
+        // op is one of: redis.set, redis.get, redis.del, redis.exists, redis.incr, redis.expire, redis.ttl, redis.scan
+        metrics.Observe(op, d, err)
+    },
+})
+```
+
+`ErrNotReady` is not an operation failure: it means there was no live handle and
+the call was never attempted. Those are reported with a **zero duration**, so
+they never enter the latency distribution. Classify accordingly before counting
+error rates. `redis.ErrNil` (missing key) is likewise a
+miss, not a failure.
+
+Work done through the escape hatch (``Client()``) is **not** measured.
+
+See [ADR-0006](../docs/adr/0006-metrics-behind-the-narrow-interface.md).

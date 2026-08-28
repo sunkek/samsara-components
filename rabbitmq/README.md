@@ -160,6 +160,8 @@ rabbitmq.Config{
     // Timeouts
     ConnectTimeout time.Duration // default: 10s — startup dial deadline
     PublishTimeout time.Duration // default: 5s  — per-publish deadline
+
+    OnOperation func(op string, d time.Duration, err error) // default: nil — see Metrics
 }
 ```
 
@@ -253,3 +255,38 @@ failover := rabbitmq.New(cfg.Failover, rabbitmq.WithName("rabbitmq-failover"))
 sup.Add(primary, samsara.WithTier(samsara.TierCritical))
 sup.Add(failover, samsara.WithTier(samsara.TierSignificant))
 ```
+
+---
+
+## Sentinel errors
+
+```go
+errors.Is(err, rabbitmq.ErrNotReady) // no live channel; the publish was not attempted
+```
+
+---
+
+## Metrics
+
+`Config.OnOperation` is called once per completed `Publisher` operation with a fixed
+operation name, how long the call took, and the error it returned. It defaults to
+nil, which disables reporting entirely.
+
+```go
+c := rabbitmq.New(rabbitmq.Config{
+    OnOperation: func(op string, d time.Duration, err error) {
+        // op is one of: rabbitmq.publish, rabbitmq.publish_with_type, rabbitmq.publish_with_headers
+        metrics.Observe(op, d, err)
+    },
+})
+```
+
+`ErrNotReady` is not an operation failure: it means there was no live handle and
+the call was never attempted. Those are reported with a **zero duration**, so
+they never enter the latency distribution. Classify accordingly before counting
+error rates.
+
+Coverage is publishes only — deliveries consumed by a subscription are not
+measured.
+
+See [ADR-0006](../docs/adr/0006-metrics-behind-the-narrow-interface.md).

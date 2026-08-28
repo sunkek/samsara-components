@@ -102,6 +102,8 @@ postgresql.Config{
     ConnectTimeout time.Duration // default: 10s — startup ping deadline only
     MaxConns       int32         // default: pgx default (min(4, GOMAXPROCS))
     MinConns       int32         // default: 0
+
+    OnOperation func(op string, d time.Duration, err error) // default: nil — see Metrics
 }
 ```
 
@@ -149,7 +151,8 @@ See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
 ### Sentinel errors
 
 ```go
-errors.Is(err, postgresql.ErrNoRows) // no rows matched the query
+errors.Is(err, postgresql.ErrNoRows)   // no rows matched the query
+errors.Is(err, postgresql.ErrNotReady) // no live pool; the call was not attempted
 ```
 
 ---
@@ -192,3 +195,30 @@ type fakeTx struct{}
 func (f *fakeTx) Commit(_ context.Context) error   { return nil }
 func (f *fakeTx) Rollback(_ context.Context) error { return nil }
 ```
+
+---
+
+## Metrics
+
+`Config.OnOperation` is called once per completed `DB` operation with a fixed
+operation name, how long the call took, and the error it returned. It defaults to
+nil, which disables reporting entirely.
+
+```go
+c := postgresql.New(postgresql.Config{
+    OnOperation: func(op string, d time.Duration, err error) {
+        // op is one of: postgres.select, postgres.get, postgres.exec, postgres.begin_tx, postgres.commit_tx
+        metrics.Observe(op, d, err)
+    },
+})
+```
+
+`ErrNotReady` is not an operation failure: it means there was no live handle and
+the call was never attempted. Those are reported with a **zero duration**, so
+they never enter the latency distribution. Classify accordingly before counting
+error rates. `postgresql.ErrNoRows` is likewise an
+empty result, not a failure.
+
+Work done through the escape hatch (``Pool()``) is **not** measured.
+
+See [ADR-0006](../docs/adr/0006-metrics-behind-the-narrow-interface.md).
