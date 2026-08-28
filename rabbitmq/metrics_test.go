@@ -2,6 +2,7 @@ package rabbitmq_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -62,16 +63,16 @@ func TestOnOperation_ReportsEveryPublisherCall(t *testing.T) {
 		if got[i].op != op {
 			t.Errorf("observation %d: op = %q, want %q", i, got[i].op, op)
 		}
-		if got[i].err == nil {
-			t.Errorf("observation %d (%s): reported nil error, want the no-channel failure", i, op)
+		if !errors.Is(got[i].err, rabbitmq.ErrNotReady) {
+			t.Errorf("observation %d (%s): reported error = %v, want ErrNotReady", i, op, got[i].err)
 		}
 	}
 }
 
 func TestOnOperation_NilSinkIsNoOp(t *testing.T) {
 	c := rabbitmq.New(rabbitmq.Config{})
-	if err := c.Publish(context.Background(), "ex", "rk", rabbitmq.ContentTypeJSON, []byte("{}")); err == nil {
-		t.Fatal("Publish error = nil, want the no-channel failure")
+	if err := c.Publish(context.Background(), "ex", "rk", rabbitmq.ContentTypeJSON, []byte("{}")); !errors.Is(err, rabbitmq.ErrNotReady) {
+		t.Fatalf("Publish error = %v, want ErrNotReady", err)
 	}
 }
 
@@ -80,8 +81,8 @@ func TestOnOperation_PanickingSinkDoesNotReachCaller(t *testing.T) {
 	c := rabbitmq.New(rabbitmq.Config{OnOperation: r.record})
 
 	// The operation's own error must survive the sink's panic unchanged.
-	if err := c.Publish(context.Background(), "ex", "rk", rabbitmq.ContentTypeJSON, []byte("{}")); err == nil {
-		t.Fatal("Publish error = nil, want the no-channel failure despite panicking sink")
+	if err := c.Publish(context.Background(), "ex", "rk", rabbitmq.ContentTypeJSON, []byte("{}")); !errors.Is(err, rabbitmq.ErrNotReady) {
+		t.Fatalf("Publish error = %v, want ErrNotReady despite panicking sink", err)
 	}
 }
 

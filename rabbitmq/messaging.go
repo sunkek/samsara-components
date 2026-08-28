@@ -268,6 +268,17 @@ type Publisher interface {
 // Compile-time assertion: *Component satisfies Publisher.
 var _ Publisher = (*Component)(nil)
 
+// ErrNotReady is returned by every [Publisher] call when the component has no
+// live channel: before [Component.Start] succeeds, after [Component.Stop], or
+// while the supervisor is reconnecting it. Callers get this error instead of a
+// nil-pointer panic and can choose to fail open. Use
+// errors.Is(err, rabbitmq.ErrNotReady) to check.
+//
+// It is named to match redis.ErrNotReady, sqlite.ErrNotReady,
+// postgresql.ErrNotReady and s3.ErrNotReady, so the same check reads the same
+// across components.
+var ErrNotReady = errors.New("rabbitmq: channel not available")
+
 // Publish sends a message to the given exchange with the given routing key.
 // It respects ctx for cancellation and uses the configured PublishTimeout
 // as a per-attempt deadline.
@@ -323,7 +334,7 @@ func (c *Component) publish(ctx context.Context, exchange, routingKey string, ms
 	c.mu.RUnlock()
 
 	if ch == nil || ch.IsClosed() {
-		return fmt.Errorf("rabbitmq: channel not available")
+		return ErrNotReady
 	}
 
 	pubCtx, cancel := context.WithTimeout(ctx, c.cfg.publishTimeout())

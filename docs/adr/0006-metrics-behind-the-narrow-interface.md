@@ -105,21 +105,23 @@ which is the trade the `uploadEngine` port already makes in `s3`
   Prototyping in `redis` first — the shallowest interface with the most
   repetition to absorb — settles the shape before it is copied.
 - The helper is analogous across modules, not verbatim, because the modules it
-  wraps are not. `redis` and `sqlite` fetch the one handle and carry the
-  not-ready check, which is where the repetition they absorb lived; `s3` has
-  three handles and leaves the check inside each operation; `rabbitmq` threads
-  the operation name into the single publish path the three methods already
-  shared; `postgresql` has no not-ready check to carry. The verbatim rule in
+  wraps are not. `redis`, `sqlite` and `postgresql` fetch the one handle and
+  carry the not-ready check, which is where the repetition they absorb lived;
+  `s3` has three handles — client, presigner, upload engine — and leaves the
+  check inside each operation; `rabbitmq` threads the operation name into the
+  single publish path the three methods already shared. The verbatim rule in
   ADR-0002 covers `Logger`, `Option`, `WithLogger` and `WithName`, and does not
   extend here.
 - `fiber`, `grpc`, `grpcclient` and `prometheus` are not instrumented: none has
   a per-operation caller surface. Serving components want request middleware,
   which is a different design; `prometheus` is the sink, not a source.
-- Two gaps surfaced while replicating, both out of scope for instrumentation
-  and worth their own change: `postgresql` panics on an unstarted component
-  where the others return an error, and `sqlite`'s equivalent sentinel is
-  unexported, so a caller cannot classify it the way `redis.ErrNotReady`
-  allows.
+- Replication surfaced that the not-ready vocabulary was not stable enough for
+  the sink rule above to hold, and closing that came with it: `redis`,
+  `sqlite`, `postgresql`, `s3` and `rabbitmq` now each export `ErrNotReady`, so
+  one `errors.Is` check reads the same across all five. `postgresql` previously
+  panicked on an unstarted component and now returns the sentinel; `sqlite`'s
+  was unexported; `s3` and `rabbitmq` returned unclassifiable message-only
+  errors. Error text is unchanged in every case.
 - Instrumenting a component is a minor release of that module: `Config` gains
   an exported field. Independent versioning
   ([ADR-0001](./0001-one-module-per-component.md)) keeps each one separate, so

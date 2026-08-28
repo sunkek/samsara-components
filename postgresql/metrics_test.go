@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // observation is one call recorded by the test sink.
@@ -43,12 +45,65 @@ type nopTx struct{ commits, rollbacks int }
 func (t *nopTx) Commit(context.Context) error   { t.commits++; return nil }
 func (t *nopTx) Rollback(context.Context) error { t.rollbacks++; return nil }
 
-// Unlike redis and sqlite, this component has no not-ready sentinel: the pool
-// operations panic on an unstarted component rather than returning an error,
-// and instrumentation deliberately did not change that. CommitTx acts on the
-// transaction rather than the pool, so it is the one operation whose reporting
-// can be proven without a live database; the rest are covered by the
-// integration tests.
+func TestOnOperation_ReportsEveryDBOperation(t *testing.T) {
+	ctx := context.Background()
+	r := &recorder{}
+	c := New(Config{OnOperation: r.record})
+
+	// Not started, so the pool operations take the not-ready path. CommitTx
+	// acts on the transaction, not the pool, so it runs for real.
+	var dst []int
+	_ = c.Select(ctx, &dst, "SELECT 1")
+	_ = c.Get(ctx, &dst, "SELECT 1")
+	_, _ = c.Exec(ctx, "SELECT 1")
+	_, _ = c.BeginTx(ctx, pgx.TxOptions{})
+	_ = c.CommitTx(ctx, &nopTx{}, nil)
+
+	want := []string{
+		"postgres.select", "postgres.get", "postgres.exec",
+		"postgres.begin_tx", "postgres.commit_tx",
+	}
+	got := r.all()
+	if len(got) != len(want) {
+		t.Fatalf("got %d observations, want %d: %+v", len(got), len(want), got)
+	}
+	for i, op := range want {
+		if got[i].op != op {
+			t.Errorf("observation %d: op = %q, want %q", i, got[i].op, op)
+		}
+	}
+}
+
+// Every pool operation returns ErrNotReady rather than panicking on a nil
+// pool, and reports a zero duration because no driver call was made.
+func TestOnOperation_NotReadyReportsSentinelAndZeroDuration(t *testing.T) {
+	ctx := context.Background()
+	r := &recorder{}
+	c := New(Config{OnOperation: r.record})
+
+	var dst []int
+	if err := c.Select(ctx, &dst, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Errorf("Select before Start = %v, want ErrNotReady", err)
+	}
+	if err := c.Get(ctx, &dst, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Errorf("Get before Start = %v, want ErrNotReady", err)
+	}
+	if _, err := c.Exec(ctx, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Errorf("Exec before Start = %v, want ErrNotReady", err)
+	}
+	if _, err := c.BeginTx(ctx, pgx.TxOptions{}); !errors.Is(err, ErrNotReady) {
+		t.Errorf("BeginTx before Start = %v, want ErrNotReady", err)
+	}
+
+	for _, o := range r.all() {
+		if !errors.Is(o.err, ErrNotReady) {
+			t.Errorf("%s: reported error = %v, want ErrNotReady", o.op, o.err)
+		}
+		if o.d != 0 {
+			t.Errorf("%s: reported duration = %v, want 0 for an unattempted operation", o.op, o.d)
+		}
+	}
+}
 
 func TestOnOperation_ReportsCommitTx(t *testing.T) {
 	r := &recorder{}

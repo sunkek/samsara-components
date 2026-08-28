@@ -62,8 +62,10 @@ type Config struct {
 	// a fixed operation name, the time the driver call took, and the error the
 	// operation returned. Defaults to nil, which disables reporting entirely.
 	//
-	// [ErrNoRows] is not a failure: it means the query matched nothing.
-	// Classify accordingly before counting error rates.
+	// Two errors are not failures: [ErrNoRows] means the query matched nothing,
+	// and [ErrNotReady] means there was no live pool and the operation was not
+	// attempted (its duration is zero). Classify accordingly before counting
+	// error rates.
 	//
 	// The callback runs on the calling goroutine after the operation has
 	// completed, so it must not block; a panic in it is recovered and logged.

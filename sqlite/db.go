@@ -53,9 +53,15 @@ type TxFinaliser interface {
 // Use errors.Is(err, sqlite.ErrNoRows) to check.
 var ErrNoRows = sql.ErrNoRows
 
-// errNotStarted is returned when the component is used before Start or after
-// Stop, instead of panicking on a nil handle.
-var errNotStarted = errors.New("sqlite: not initialised (component not started)")
+// ErrNotReady is returned by every [DB] operation when the component has no
+// open database: before [Component.Start] succeeds, after [Component.Stop], or
+// while the supervisor is restarting it. Callers get this error instead of a
+// nil-pointer panic and can choose to fail open. Use
+// errors.Is(err, sqlite.ErrNotReady) to check.
+//
+// It is named to match redis.ErrNotReady and postgresql.ErrNotReady, so the
+// same check reads the same across components.
+var ErrNotReady = errors.New("sqlite: not initialised (component not started)")
 
 // Compile-time assertion that *Component satisfies its own DB interface.
 var _ DB = (*Component)(nil)

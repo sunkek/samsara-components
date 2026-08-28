@@ -321,18 +321,18 @@ func TestQueriesBeforeStartReturnError(t *testing.T) {
 	ctx := context.Background()
 
 	var dst []int
-	if err := c.Select(ctx, &dst, "SELECT 1"); !errors.Is(err, errNotStarted) {
-		t.Errorf("Select before Start = %v, want errNotStarted", err)
+	if err := c.Select(ctx, &dst, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Errorf("Select before Start = %v, want ErrNotReady", err)
 	}
 	var one int
-	if err := c.Get(ctx, &one, "SELECT 1"); !errors.Is(err, errNotStarted) {
-		t.Errorf("Get before Start = %v, want errNotStarted", err)
+	if err := c.Get(ctx, &one, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Errorf("Get before Start = %v, want ErrNotReady", err)
 	}
-	if _, err := c.Exec(ctx, "SELECT 1"); !errors.Is(err, errNotStarted) {
-		t.Errorf("Exec before Start = %v, want errNotStarted", err)
+	if _, err := c.Exec(ctx, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Errorf("Exec before Start = %v, want ErrNotReady", err)
 	}
-	if _, err := c.BeginTx(ctx, nil); !errors.Is(err, errNotStarted) {
-		t.Errorf("BeginTx before Start = %v, want errNotStarted", err)
+	if _, err := c.BeginTx(ctx, nil); !errors.Is(err, ErrNotReady) {
+		t.Errorf("BeginTx before Start = %v, want ErrNotReady", err)
 	}
 }
 

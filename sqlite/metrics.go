@@ -47,8 +47,8 @@ func observe[T any](c *Component, op string, fn func(*sql.DB) (T, error)) (T, er
 	var zero T
 	db := c.getDB()
 	if db == nil {
-		c.record(op, 0, errNotStarted)
-		return zero, errNotStarted
+		c.record(op, 0, ErrNotReady)
+		return zero, ErrNotReady
 	}
 	start := time.Now()
 	v, err := fn(db)

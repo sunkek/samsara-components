@@ -171,8 +171,8 @@ func TestPublish_BeforeStart_ReturnsError(t *testing.T) {
 	comp := rabbitmq.New(rabbitmq.Config{})
 	err := comp.Publish(context.Background(), "events", "user.created",
 		rabbitmq.ContentTypeJSON, []byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error from Publish when not connected")
+	if !errors.Is(err, rabbitmq.ErrNotReady) {
+		t.Fatalf("Publish when not connected = %v, want ErrNotReady", err)
 	}
 }
 
@@ -180,8 +180,8 @@ func TestPublishWithType_BeforeStart_ReturnsError(t *testing.T) {
 	comp := rabbitmq.New(rabbitmq.Config{})
 	err := comp.PublishWithType(context.Background(), "events", "user.created",
 		rabbitmq.ContentTypeJSON, "UserCreated", []byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error from PublishWithType when not connected")
+	if !errors.Is(err, rabbitmq.ErrNotReady) {
+		t.Fatalf("PublishWithType when not connected = %v, want ErrNotReady", err)
 	}
 }
 

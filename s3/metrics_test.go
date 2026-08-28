@@ -2,6 +2,7 @@ package s3_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -66,8 +67,8 @@ func TestOnOperation_ReportsEveryStorageOperation(t *testing.T) {
 		if got[i].op != op {
 			t.Errorf("observation %d: op = %q, want %q", i, got[i].op, op)
 		}
-		if got[i].err == nil {
-			t.Errorf("observation %d (%s): reported nil error, want the not-initialised failure", i, op)
+		if !errors.Is(got[i].err, s3.ErrNotReady) {
+			t.Errorf("observation %d (%s): reported error = %v, want ErrNotReady", i, op, got[i].err)
 		}
 	}
 }
@@ -91,8 +92,8 @@ func TestOnOperation_DeleteByPrefixReportsOnce(t *testing.T) {
 
 func TestOnOperation_NilSinkIsNoOp(t *testing.T) {
 	c := s3.New(s3.Config{})
-	if err := c.Delete(context.Background(), "b", "k"); err == nil {
-		t.Fatal("Delete error = nil, want the not-initialised failure")
+	if err := c.Delete(context.Background(), "b", "k"); !errors.Is(err, s3.ErrNotReady) {
+		t.Fatalf("Delete error = %v, want ErrNotReady", err)
 	}
 }
 
@@ -101,8 +102,8 @@ func TestOnOperation_PanickingSinkDoesNotReachCaller(t *testing.T) {
 	c := s3.New(s3.Config{OnOperation: r.record})
 
 	// The operation's own error must survive the sink's panic unchanged.
-	if err := c.Delete(context.Background(), "b", "k"); err == nil {
-		t.Fatal("Delete error = nil, want the not-initialised failure despite panicking sink")
+	if err := c.Delete(context.Background(), "b", "k"); !errors.Is(err, s3.ErrNotReady) {
+		t.Fatalf("Delete error = %v, want ErrNotReady despite panicking sink", err)
 	}
 }
 

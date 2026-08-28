@@ -36,20 +36,23 @@ func (c *Component) record(op string, d time.Duration, err error) {
 	sink(op, d, err)
 }
 
-// observe runs one [DB] operation against the pool, times it, and reports the
-// result.
-//
-// Unlike its redis and sqlite counterparts it carries no not-ready check:
-// this component has never had one, and adding it here would turn a panic on
-// an unstarted component into an error return — a behaviour change, which
-// instrumentation may not make. Giving this component a not-ready sentinel is
-// worth doing on its own merits, and separately.
+// observe runs one [DB] operation against the live pool, times it, and reports
+// the result. It also carries the not-ready check that every operation needs:
+// with no live pool the operation is not attempted, and is reported with a
+// zero duration and [ErrNotReady].
 //
 // fn returns this module's own error — [ErrNoRows] or a wrapped driver error —
-// not the raw one, so the sink sees a stable vocabulary.
+// not the raw one, so the sink sees a stable vocabulary. Timing covers the
+// driver call only.
 func observe[T any](c *Component, op string, fn func(*pgxpool.Pool) (T, error)) (T, error) {
+	var zero T
+	pool := c.getPool()
+	if pool == nil {
+		c.record(op, 0, ErrNotReady)
+		return zero, ErrNotReady
+	}
 	start := time.Now()
-	v, err := fn(c.getPool())
+	v, err := fn(pool)
 	c.record(op, time.Since(start), err)
 	return v, err
 }

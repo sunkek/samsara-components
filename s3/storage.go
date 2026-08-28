@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
@@ -36,3 +37,13 @@ type Storage interface {
 
 // Compile-time assertion: *Component satisfies Storage.
 var _ Storage = (*Component)(nil)
+
+// ErrNotReady is returned by every [Storage] operation when the component has
+// no live client: before [Component.Start] succeeds, after [Component.Stop],
+// or while the supervisor is restarting it. Callers get this error instead of
+// a nil-pointer panic and can choose to fail open. Use
+// errors.Is(err, s3.ErrNotReady) to check.
+//
+// It is named to match redis.ErrNotReady, sqlite.ErrNotReady and
+// postgresql.ErrNotReady, so the same check reads the same across components.
+var ErrNotReady = errors.New("client not initialised")

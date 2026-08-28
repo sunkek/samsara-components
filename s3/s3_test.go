@@ -2,6 +2,7 @@ package s3_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -104,9 +105,37 @@ func TestUploadRequest_RequiredFields(t *testing.T) {
 		Key:    "file.txt",
 		Body:   strings.NewReader("hello"),
 	})
-	// Expected: nil-client error (not panic).
-	if err == nil {
-		t.Fatal("expected error when client not initialised")
+	if !errors.Is(err, s3.ErrNotReady) {
+		t.Fatalf("Upload before Start = %v, want ErrNotReady", err)
+	}
+}
+
+// Every Storage operation reports the same sentinel on an unstarted component,
+// so a caller can make one check rather than seven.
+func TestStorage_NotReadyBeforeStart(t *testing.T) {
+	ctx := context.Background()
+	comp := s3.New(s3.Config{})
+
+	if err := comp.Upload(ctx, s3.UploadRequest{Bucket: "b", Key: "k", Body: strings.NewReader("x")}); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("Upload = %v, want ErrNotReady", err)
+	}
+	if _, err := comp.Download(ctx, "b", "k"); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("Download = %v, want ErrNotReady", err)
+	}
+	if err := comp.Delete(ctx, "b", "k"); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("Delete = %v, want ErrNotReady", err)
+	}
+	if _, err := comp.DeleteByPrefix(ctx, "b", "p"); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("DeleteByPrefix = %v, want ErrNotReady", err)
+	}
+	if _, err := comp.ListKeys(ctx, "b", "p"); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("ListKeys = %v, want ErrNotReady", err)
+	}
+	if _, err := comp.PresignDownload(ctx, s3.PresignRequest{Bucket: "b", Key: "k"}); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("PresignDownload = %v, want ErrNotReady", err)
+	}
+	if _, err := comp.PresignUpload(ctx, s3.PresignRequest{Bucket: "b", Key: "k"}); !errors.Is(err, s3.ErrNotReady) {
+		t.Errorf("PresignUpload = %v, want ErrNotReady", err)
 	}
 }
 

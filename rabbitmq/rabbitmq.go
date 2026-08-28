@@ -61,8 +61,8 @@ type Config struct {
 	// a fixed operation name, the time the publish took, and the error it
 	// returned. Defaults to nil, which disables reporting entirely.
 	//
-	// A publish attempted with no live channel is reported as a failure with
-	// the elapsed time, not skipped.
+	// A publish attempted with no live channel is reported with [ErrNotReady].
+	// Classify accordingly before counting error rates.
 	//
 	// The callback runs on the calling goroutine after the publish has
 	// completed, so it must not block; a panic in it is recovered and logged.

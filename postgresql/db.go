@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/georgysavva/scany/v2/pgxscan"
@@ -53,6 +54,19 @@ var _ DB = (*Component)(nil)
 // ErrNoRows is returned by [Select] and [Get] when no rows match the query.
 // Use errors.Is(err, postgresql.ErrNoRows) to check.
 var ErrNoRows = pgx.ErrNoRows
+
+// ErrNotReady is returned by every [DB] operation that needs the pool when the
+// component has no live connection: before [Component.Start] succeeds, after
+// [Component.Stop], or while the supervisor is restarting it. Callers get this
+// error instead of a nil-pointer panic and can choose to fail open. Use
+// errors.Is(err, postgresql.ErrNotReady) to check.
+//
+// [CommitTx] acts on a transaction the caller already holds, so it does not
+// return this.
+//
+// It is named to match redis.ErrNotReady and sqlite.ErrNotReady, so the same
+// check reads the same across components.
+var ErrNotReady = errors.New("postgres: pool not initialised (component not started)")
 
 // Select executes sql and scans all result rows into dst.
 // dst must be a pointer to a slice of structs or scalars.

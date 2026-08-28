@@ -77,8 +77,8 @@ func TestOnOperation_NotStartedReportsZeroDuration(t *testing.T) {
 	c := New(Config{OnOperation: r.record})
 
 	var dst []int
-	if err := c.Select(context.Background(), &dst, "SELECT 1"); !errors.Is(err, errNotStarted) {
-		t.Fatalf("Select error = %v, want errNotStarted", err)
+	if err := c.Select(context.Background(), &dst, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("Select error = %v, want ErrNotReady", err)
 	}
 
 	got := r.all()
@@ -116,8 +116,8 @@ func TestOnOperation_CommitTxRollbackReportsCallerError(t *testing.T) {
 func TestOnOperation_NilSinkIsNoOp(t *testing.T) {
 	c := New(Config{})
 	var dst []int
-	if err := c.Select(context.Background(), &dst, "SELECT 1"); !errors.Is(err, errNotStarted) {
-		t.Fatalf("Select error = %v, want errNotStarted", err)
+	if err := c.Select(context.Background(), &dst, "SELECT 1"); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("Select error = %v, want ErrNotReady", err)
 	}
 }
 
@@ -127,8 +127,8 @@ func TestOnOperation_PanickingSinkDoesNotReachCaller(t *testing.T) {
 
 	// The operation's own error must survive the sink's panic unchanged.
 	_, err := c.Exec(context.Background(), "SELECT 1")
-	if !errors.Is(err, errNotStarted) {
-		t.Fatalf("Exec error = %v, want errNotStarted despite panicking sink", err)
+	if !errors.Is(err, ErrNotReady) {
+		t.Fatalf("Exec error = %v, want ErrNotReady despite panicking sink", err)
 	}
 }
 

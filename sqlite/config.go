@@ -79,8 +79,9 @@ type Config struct {
 	// operation returned. Defaults to nil, which disables reporting entirely.
 	//
 	// Two errors are not failures: [ErrNoRows] means the query matched nothing,
-	// and a not-started error means the database was not open and the operation
-	// was not attempted (its duration is zero).
+	// and [ErrNotReady] means the database was not open and the operation was
+	// not attempted (its duration is zero). Classify accordingly before
+	// counting error rates.
 	//
 	// The callback runs on the calling goroutine after the operation has
 	// completed, so it must not block; a panic in it is recovered and logged.
