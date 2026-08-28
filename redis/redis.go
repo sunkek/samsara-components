@@ -76,6 +76,21 @@ type Config struct {
 	// TLSMinVersion is the minimum accepted TLS version. Defaults to TLS 1.2.
 	// Accepts "1.2" or "1.3".
 	TLSMinVersion string
+
+	// OnOperation, when set, is called once per completed [KV] operation with
+	// a fixed operation name, the time the driver call took, and the error the
+	// operation returned. Defaults to nil, which disables reporting entirely.
+	//
+	// Two errors are not failures: [ErrNil] means the key was absent, and
+	// [ErrNotReady] means there was no live connection and the operation was
+	// not attempted (its duration is zero). Classify accordingly before
+	// counting error rates.
+	//
+	// The callback runs on the calling goroutine after the operation has
+	// completed, so it must not block; a panic in it is recovered and logged.
+	// Only calls through the [KV] interface are reported — traffic through
+	// [Component.Client] is invisible to it.
+	OnOperation func(op string, d time.Duration, err error)
 }
 
 func (c Config) addr() string {
@@ -88,6 +103,10 @@ func (c Config) addr() string {
 		port = 6379
 	}
 	return fmt.Sprintf("%s:%d", host, port)
+}
+
+func (c Config) onOperation() func(op string, d time.Duration, err error) {
+	return c.OnOperation
 }
 
 func (c Config) connectTimeout() time.Duration {
