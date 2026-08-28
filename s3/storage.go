@@ -11,6 +11,9 @@ import (
 // adapters testable.
 //
 //	type AvatarRepo struct { store s3.Storage }
+//
+// Metrics reported to [Config.OnOperation] cover calls made through this
+// interface only. Work done through [Component.Client] is not measured.
 type Storage interface {
 	// Upload puts an object into S3. See [Component.Upload].
 	Upload(ctx context.Context, r UploadRequest) error
@@ -46,4 +49,4 @@ var _ Storage = (*Component)(nil)
 //
 // It is named to match redis.ErrNotReady, sqlite.ErrNotReady and
 // postgresql.ErrNotReady, so the same check reads the same across components.
-var ErrNotReady = errors.New("client not initialised")
+var ErrNotReady = errors.New("s3: client not initialised")

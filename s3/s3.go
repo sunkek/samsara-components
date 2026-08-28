@@ -215,6 +215,11 @@ func (c *Component) Name() string { return c.name }
 // that need the handle at startup should depend on this component via
 // samsara.WithDependencies so Start has already run.
 //
+// Operating on the client directly bypasses this component's logging,
+// lifecycle handling and metrics: work done through it is not reported to
+// [Config.OnOperation], so it does not appear in the published numbers.
+// Prefer the [Storage] interface for anything it covers.
+//
 // This is the GA service client, not the upload engine: uploads run through a
 // pre-1.0 transfer manager that is deliberately not exported. See
 // docs/adr/0004-transfermanager-behind-an-internal-port.md.
@@ -332,7 +337,7 @@ func (c *Component) Stop(_ context.Context) error {
 func (c *Component) Health(ctx context.Context) error {
 	client := c.getClient()
 	if client == nil {
-		return fmt.Errorf("s3: %w", ErrNotReady)
+		return ErrNotReady
 	}
 	return verifyConnectivity(ctx, client)
 }

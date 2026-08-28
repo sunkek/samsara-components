@@ -69,7 +69,7 @@ func (c *Component) Download(ctx context.Context, bucket, key string) (io.ReadCl
 func (c *Component) download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
 	client := c.getClient()
 	if client == nil {
-		return nil, fmt.Errorf("s3 download: %w", ErrNotReady)
+		return nil, ErrNotReady
 	}
 	if bucket == "" || key == "" {
 		return nil, fmt.Errorf("s3 download: bucket and key are required")
@@ -94,7 +94,7 @@ func (c *Component) Delete(ctx context.Context, bucket, key string) error {
 func (c *Component) delete(ctx context.Context, bucket, key string) error {
 	client := c.getClient()
 	if client == nil {
-		return fmt.Errorf("s3 delete: %w", ErrNotReady)
+		return ErrNotReady
 	}
 	if bucket == "" || key == "" {
 		return fmt.Errorf("s3 delete: bucket and key are required")
@@ -119,7 +119,7 @@ func (c *Component) DeleteByPrefix(ctx context.Context, bucket, prefix string) (
 func (c *Component) deleteByPrefix(ctx context.Context, bucket, prefix string) (int, error) {
 	client := c.getClient()
 	if client == nil {
-		return 0, fmt.Errorf("s3 delete-by-prefix: %w", ErrNotReady)
+		return 0, ErrNotReady
 	}
 	if bucket == "" {
 		return 0, fmt.Errorf("s3 delete-by-prefix: bucket is required")
@@ -161,7 +161,7 @@ func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]stri
 func (c *Component) listKeys(ctx context.Context, bucket, prefix string) ([]string, error) {
 	client := c.getClient()
 	if client == nil {
-		return nil, fmt.Errorf("s3 list-keys: %w", ErrNotReady)
+		return nil, ErrNotReady
 	}
 	if bucket == "" {
 		return nil, fmt.Errorf("s3 list-keys: bucket is required")
@@ -205,7 +205,7 @@ func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (stri
 func (c *Component) presignDownload(ctx context.Context, r PresignRequest) (string, error) {
 	presigner := c.getPresigner()
 	if presigner == nil {
-		return "", fmt.Errorf("s3 presign-download: %w", ErrNotReady)
+		return "", ErrNotReady
 	}
 	if r.Bucket == "" || r.Key == "" {
 		return "", fmt.Errorf("s3 presign-download: bucket and key are required")
@@ -239,7 +239,7 @@ func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string
 func (c *Component) presignUpload(ctx context.Context, r PresignRequest) (string, error) {
 	presigner := c.getPresigner()
 	if presigner == nil {
-		return "", fmt.Errorf("s3 presign-upload: %w", ErrNotReady)
+		return "", ErrNotReady
 	}
 	if r.Bucket == "" || r.Key == "" {
 		return "", fmt.Errorf("s3 presign-upload: bucket and key are required")
