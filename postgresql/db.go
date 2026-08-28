@@ -16,6 +16,9 @@ import (
 // adapters testable.
 //
 //	type UserRepo struct { db postgresql.DB }
+//
+// Metrics reported to [Config.OnOperation] cover calls made through this
+// interface only. Work done through [Component.Pool] is not measured.
 type DB interface {
 	// Select executes sql and scans all result rows into dst (a pointer to a
 	// slice). Returns [ErrNoRows] if the result set is empty.

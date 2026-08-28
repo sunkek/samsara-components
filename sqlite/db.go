@@ -14,6 +14,9 @@ import (
 // adapters testable.
 //
 //	type TargetRepo struct { db sqlite.DB }
+//
+// Metrics reported to [Config.OnOperation] cover calls made through this
+// interface only.
 type DB interface {
 	// Select executes query and scans all result rows into dst (a pointer to a
 	// slice). An empty result set is not an error; dst is left empty.

@@ -38,7 +38,7 @@ func (c *Component) record(op string, d time.Duration, err error) {
 // observe runs one [DB] operation against the live handle, times it, and
 // reports the result. It also carries the not-started check that every
 // operation needs: with no open database the operation is not attempted, and
-// is reported with a zero duration.
+// is reported with a zero duration and [ErrNotReady].
 //
 // fn returns this module's own error — [ErrNoRows] or a wrapped driver error —
 // not the raw one, so the sink sees a stable vocabulary. Timing covers the
@@ -65,7 +65,7 @@ func observeErr(c *Component, op string, fn func(*sql.DB) error) error {
 }
 
 // observeTx times an operation that acts on an open transaction rather than on
-// the pool, so it has no handle to fetch and no not-started path.
+// the database handle, so it has no handle to fetch and no not-started path.
 func observeTx(c *Component, op string, fn func() error) error {
 	start := time.Now()
 	err := fn()

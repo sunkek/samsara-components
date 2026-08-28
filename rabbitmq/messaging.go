@@ -253,6 +253,9 @@ func (c *Component) SubscribeWithOptions(exchange, queue, routingKey string, han
 //
 // Subscription setup (DeclareExchange, Subscribe) is wiring, not a domain
 // concern, so it stays off this interface.
+//
+// Metrics reported to [Config.OnOperation] cover calls made through this
+// interface only: publishes, not deliveries consumed by a subscription.
 type Publisher interface {
 	// Publish sends a message to the given exchange with the given routing key.
 	// See [Component.Publish].
