@@ -40,9 +40,15 @@ const sniffLen = 512
 // (UploadConcurrency+1) × UploadPartSize — roughly 85 MiB per in-flight upload
 // at the defaults, once GC slack and HTTP buffers are counted.
 func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
+	return observeErr(c, opUpload, func() error {
+		return c.upload(ctx, r)
+	})
+}
+
+func (c *Component) upload(ctx context.Context, r UploadRequest) error {
 	engine := c.getEngine()
 	if engine == nil {
-		return fmt.Errorf("s3 upload: client not initialised")
+		return fmt.Errorf("s3 upload: %w", ErrNotReady)
 	}
 	if r.Bucket == "" || r.Key == "" {
 		return fmt.Errorf("s3 upload: bucket and key are required")

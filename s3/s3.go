@@ -70,6 +70,29 @@ type Config struct {
 	// PathStyleForcing enables path-style S3 addressing (bucket in URL path
 	// instead of subdomain). Required by MinIO and some other providers.
 	PathStyleForcing bool
+
+	// OnOperation, when set, is called once per completed [Storage] operation
+	// with a fixed operation name, the time the operation took, and the error
+	// it returned. Defaults to nil, which disables reporting entirely.
+	//
+	// [ErrNotReady] is not a failure of the operation: it means there was no
+	// live client and the call was not attempted. Classify accordingly before
+	// counting error rates.
+	//
+	// Each exported operation reports exactly once, including the ones that
+	// paginate internally: [Component.ListKeys] runs a ListObjectsV2 loop and
+	// [Component.DeleteByPrefix] lists before it deletes, and each is one
+	// observation covering the whole call.
+	//
+	// The callback runs on the calling goroutine after the operation has
+	// completed, so it must not block; a panic in it is recovered and logged.
+	// Only calls through the [Storage] interface are reported — traffic through
+	// [Component.Client] is invisible to it.
+	OnOperation func(op string, d time.Duration, err error)
+}
+
+func (c Config) onOperation() func(op string, d time.Duration, err error) {
+	return c.OnOperation
 }
 
 func (c Config) connectTimeout() time.Duration {
@@ -309,7 +332,7 @@ func (c *Component) Stop(_ context.Context) error {
 func (c *Component) Health(ctx context.Context) error {
 	client := c.getClient()
 	if client == nil {
-		return fmt.Errorf("s3: client not initialised")
+		return fmt.Errorf("s3: %w", ErrNotReady)
 	}
 	return verifyConnectivity(ctx, client)
 }

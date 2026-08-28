@@ -56,6 +56,23 @@ type Config struct {
 	// PublishTimeout is the per-attempt deadline for Publish calls.
 	// Defaults to 5 s.
 	PublishTimeout time.Duration
+
+	// OnOperation, when set, is called once per completed [Publisher] call with
+	// a fixed operation name, the time the publish took, and the error it
+	// returned. Defaults to nil, which disables reporting entirely.
+	//
+	// A publish attempted with no live channel is reported with [ErrNotReady].
+	// Classify accordingly before counting error rates.
+	//
+	// The callback runs on the calling goroutine after the publish has
+	// completed, so it must not block; a panic in it is recovered and logged.
+	// Only calls through the [Publisher] interface are reported — subscriptions
+	// and direct channel use are invisible to it.
+	OnOperation func(op string, d time.Duration, err error)
+}
+
+func (c Config) onOperation() func(op string, d time.Duration, err error) {
+	return c.OnOperation
 }
 
 func (c Config) uri() string {

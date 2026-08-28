@@ -8,6 +8,62 @@ across all of them.
 
 ---
 
+## redis/v0.7.0, postgresql/v0.4.0, s3/v0.4.0, sqlite/v0.2.0, rabbitmq/v0.5.0 — 2026-08-28
+
+The five components with a narrow interface gain a metrics seam and a shared
+error sentinel. Released together because the two are one design: the sink can
+only classify what it is handed, and that required the same error vocabulary in
+all five ([ADR-0006](docs/adr/0006-metrics-behind-the-narrow-interface.md)).
+
+### Added
+- `Config.OnOperation func(op string, d time.Duration, err error)` on all five —
+  called once per completed operation through the narrow interface (`KV`, `DB`,
+  `Storage`, `Publisher`). Nil by default, so the seam costs nothing until a
+  caller sets it. Operation names are fixed per method and never derived from a
+  key, prefix, table, or routing key: those are unbounded and would blow up
+  label cardinality in the sink. The names are `redis.get`, `postgres.select`,
+  `sqlite.begin_tx`, `s3.upload`, `rabbitmq.publish`, and their siblings — one
+  per wrapped method.
+- A panicking sink is recovered and logged rather than propagated: the caller's
+  operation has already completed by the time the sink runs, and instrumentation
+  must not fail the work it measures.
+- `ErrNotReady` is now exported from all five, with matching semantics and
+  matching names, so one `errors.Is` check reads the same across components.
+  A call made before `Start` is reported to the sink with a zero duration and
+  this sentinel — an unattempted call, distinguishable from a failed one.
+  Error text is unchanged: each sentinel carries the message its component
+  already returned.
+
+### Changed
+- **postgresql, BREAKING (behaviour):** `DB` operations on an unstarted
+  component returned a nil-pool panic. They now return `ErrNotReady`, which is
+  what the other four already did and what callers had no way to guard against.
+
+### Note
+- The metrics seam sits behind the existing narrow interface rather than on a
+  new exported collector type, and reports raw `(op, duration, error)` rather
+  than a Prometheus metric. Deciding between counters, histograms, and labels
+  belongs to the application, not to nine components that would each have to
+  guess the same way. See
+  [ADR-0006](docs/adr/0006-metrics-behind-the-narrow-interface.md).
+
+---
+
+## fiber/v0.6.1, grpc/v0.2.2, grpcclient/v0.2.2, prometheus/v0.1.2 — 2026-08-28
+
+### Dependencies
+- No code changes. Direct dependency bumps only: `gofiber/contrib/v3/swaggo`
+  v1.0.9 -> v1.0.10 and `google.golang.org/grpc` v1.83.0 -> v1.83.2, with
+  `go mod tidy` refreshing indirect pins. `prometheus` carries a go.sum-only
+  change.
+- The same round bumped `rabbitmq/amqp091-go` to v1.14.0, `modernc.org/sqlite`
+  to v1.57.0, and the AWS SDK used by `s3` — including
+  `feature/s3/transfermanager` v0.3.17 -> v0.4.1, a pre-1.0 minor that did not
+  break the unexported port it sits behind
+  ([ADR-0004](docs/adr/0004-transfermanager-behind-an-internal-port.md)).
+
+---
+
 ## Repository — 2026-08-27
 
 Tooling and documentation shared by every module. Nothing here carries a

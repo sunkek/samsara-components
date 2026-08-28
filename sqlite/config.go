@@ -73,6 +73,25 @@ type Config struct {
 	// ConnectTimeout bounds the open + verification round-trips during Start.
 	// Defaults to 10 s.
 	ConnectTimeout time.Duration
+
+	// OnOperation, when set, is called once per completed [DB] operation with
+	// a fixed operation name, the time the driver call took, and the error the
+	// operation returned. Defaults to nil, which disables reporting entirely.
+	//
+	// Two errors are not failures: [ErrNoRows] means the query matched nothing,
+	// and [ErrNotReady] means the database was not open and the operation was
+	// not attempted (its duration is zero). Classify accordingly before
+	// counting error rates.
+	//
+	// The callback runs on the calling goroutine after the operation has
+	// completed, so it must not block; a panic in it is recovered and logged.
+	// Only calls through the [DB] interface are reported — traffic through the
+	// driver handle is invisible to it.
+	OnOperation func(op string, d time.Duration, err error)
+}
+
+func (c Config) onOperation() func(op string, d time.Duration, err error) {
+	return c.OnOperation
 }
 
 func (c Config) path() string {

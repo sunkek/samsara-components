@@ -37,6 +37,9 @@ settled, and the reasons are not visible in the code:
 - [ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md) — why every
   component exports an accessor for its driver handle, and what that accessor
   may not be attached to.
+- [ADR-0006](./docs/adr/0006-metrics-behind-the-narrow-interface.md) — why
+  metrics go behind `DB`/`KV`/`Storage`/`Publisher` instead of on a new
+  exported collector seam.
 
 ## Conventions
 
@@ -55,6 +58,11 @@ settled, and the reasons are not visible in the code:
 - **Boilerplate stays identical:** the nine copies of `Logger`, `nopLogger`,
   `Option`, `WithLogger`, and `WithName` are copied verbatim, so the nine stay
   diffable. Change one and change all nine the same way.
+- **Not ready is an error, not a panic.** A component with no live handle —
+  before `Start`, after `Stop`, mid-restart — returns its exported
+  `ErrNotReady` from every operation on its narrow interface, so callers can
+  make one `errors.Is` check and choose to fail open. `redis`, `sqlite`,
+  `postgresql`, `s3` and `rabbitmq` each export one under that name.
 - **Depend on the seam, not the component:** the caller-facing surface is
   declared as an interface — `postgresql.DB`, `sqlite.DB`, `redis.KV`,
   `s3.Storage`, `rabbitmq.Publisher` — with a `var _ Iface = (*Component)(nil)`

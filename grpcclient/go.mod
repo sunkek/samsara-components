@@ -2,7 +2,7 @@ module github.com/sunkek/samsara-components/grpcclient
 
 go 1.25.0
 
-require google.golang.org/grpc v1.83.0
+require google.golang.org/grpc v1.83.2
 
 require (
 	golang.org/x/net v0.58.0 // indirect

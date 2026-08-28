@@ -61,9 +61,15 @@ const (
 // Download retrieves an object from S3. The caller must close the returned
 // [io.ReadCloser] after reading.
 func (c *Component) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+	return observe(c, opDownload, func() (io.ReadCloser, error) {
+		return c.download(ctx, bucket, key)
+	})
+}
+
+func (c *Component) download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
 	client := c.getClient()
 	if client == nil {
-		return nil, fmt.Errorf("s3 download: client not initialised")
+		return nil, fmt.Errorf("s3 download: %w", ErrNotReady)
 	}
 	if bucket == "" || key == "" {
 		return nil, fmt.Errorf("s3 download: bucket and key are required")
@@ -80,9 +86,15 @@ func (c *Component) Download(ctx context.Context, bucket, key string) (io.ReadCl
 
 // Delete removes a single object from S3.
 func (c *Component) Delete(ctx context.Context, bucket, key string) error {
+	return observeErr(c, opDelete, func() error {
+		return c.delete(ctx, bucket, key)
+	})
+}
+
+func (c *Component) delete(ctx context.Context, bucket, key string) error {
 	client := c.getClient()
 	if client == nil {
-		return fmt.Errorf("s3 delete: client not initialised")
+		return fmt.Errorf("s3 delete: %w", ErrNotReady)
 	}
 	if bucket == "" || key == "" {
 		return fmt.Errorf("s3 delete: bucket and key are required")
@@ -99,15 +111,23 @@ func (c *Component) Delete(ctx context.Context, bucket, key string) error {
 // DeleteByPrefix removes all objects whose keys begin with prefix.
 // Returns the number of objects deleted. Handles pagination automatically.
 func (c *Component) DeleteByPrefix(ctx context.Context, bucket, prefix string) (int, error) {
+	return observe(c, opDeleteByPrefix, func() (int, error) {
+		return c.deleteByPrefix(ctx, bucket, prefix)
+	})
+}
+
+func (c *Component) deleteByPrefix(ctx context.Context, bucket, prefix string) (int, error) {
 	client := c.getClient()
 	if client == nil {
-		return 0, fmt.Errorf("s3 delete-by-prefix: client not initialised")
+		return 0, fmt.Errorf("s3 delete-by-prefix: %w", ErrNotReady)
 	}
 	if bucket == "" {
 		return 0, fmt.Errorf("s3 delete-by-prefix: bucket is required")
 	}
 
-	keys, err := c.ListKeys(ctx, bucket, prefix)
+	// The unexported form, so this call reports one observation rather than
+	// two.
+	keys, err := c.listKeys(ctx, bucket, prefix)
 	if err != nil {
 		return 0, fmt.Errorf("s3 delete-by-prefix: list: %w", err)
 	}
@@ -133,9 +153,15 @@ func (c *Component) DeleteByPrefix(ctx context.Context, bucket, prefix string) (
 // ListKeys returns all object keys in bucket with the given prefix.
 // Handles pagination automatically; safe for large buckets.
 func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]string, error) {
+	return observe(c, opListKeys, func() ([]string, error) {
+		return c.listKeys(ctx, bucket, prefix)
+	})
+}
+
+func (c *Component) listKeys(ctx context.Context, bucket, prefix string) ([]string, error) {
 	client := c.getClient()
 	if client == nil {
-		return nil, fmt.Errorf("s3 list-keys: client not initialised")
+		return nil, fmt.Errorf("s3 list-keys: %w", ErrNotReady)
 	}
 	if bucket == "" {
 		return nil, fmt.Errorf("s3 list-keys: bucket is required")
@@ -171,9 +197,15 @@ func (c *Component) ListKeys(ctx context.Context, bucket, prefix string) ([]stri
 // PresignDownload generates a time-limited presigned URL for downloading an object.
 // The URL is valid for [PresignRequest.TTL] or [Config.PresignTTL] if TTL is 0.
 func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (string, error) {
+	return observe(c, opPresignDownload, func() (string, error) {
+		return c.presignDownload(ctx, r)
+	})
+}
+
+func (c *Component) presignDownload(ctx context.Context, r PresignRequest) (string, error) {
 	presigner := c.getPresigner()
 	if presigner == nil {
-		return "", fmt.Errorf("s3 presign-download: client not initialised")
+		return "", fmt.Errorf("s3 presign-download: %w", ErrNotReady)
 	}
 	if r.Bucket == "" || r.Key == "" {
 		return "", fmt.Errorf("s3 presign-download: bucket and key are required")
@@ -199,9 +231,15 @@ func (c *Component) PresignDownload(ctx context.Context, r PresignRequest) (stri
 // client must send matching Content-Type / Content-Length headers when using the
 // returned URL or the upload will fail signature validation.
 func (c *Component) PresignUpload(ctx context.Context, r PresignRequest) (string, error) {
+	return observe(c, opPresignUpload, func() (string, error) {
+		return c.presignUpload(ctx, r)
+	})
+}
+
+func (c *Component) presignUpload(ctx context.Context, r PresignRequest) (string, error) {
 	presigner := c.getPresigner()
 	if presigner == nil {
-		return "", fmt.Errorf("s3 presign-upload: client not initialised")
+		return "", fmt.Errorf("s3 presign-upload: %w", ErrNotReady)
 	}
 	if r.Bucket == "" || r.Key == "" {
 		return "", fmt.Errorf("s3 presign-upload: bucket and key are required")
