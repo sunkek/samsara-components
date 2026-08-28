@@ -18,6 +18,9 @@ import (
 // go-redis handle, and the two are different things.
 //
 //	type SessionStore struct { rdb redis.KV }
+//
+// Metrics reported to [Config.OnOperation] cover calls made through this
+// interface only. Work done through [Component.Client] is not measured.
 type KV interface {
 	// Set stores value at key with the given TTL.
 	// Use ttl=0 for no expiry.

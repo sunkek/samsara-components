@@ -83,6 +83,7 @@ takes no context — `database/sql` binds the transaction's context at `BeginTx`
 | `DisableForeignKeys` | `false` | Foreign keys are **on** by default, unlike bare SQLite. |
 | `MaxOpenConns` | 1 | See concurrency below. |
 | `ConnectTimeout` | 10s | Bounds the open + verification round-trips. |
+| `OnOperation` | nil | Per-operation metrics sink; see [Metrics](#metrics). |
 
 Pragmas are passed as `_pragma` DSN parameters so they apply to every connection
 the pool opens. Setting a per-connection pragma like `foreign_keys` with a
@@ -138,3 +139,35 @@ go test -race -count=1 -tags integration ./... # integration tests
 Integration tests need no docker-compose services — they use `t.TempDir()` — and
 cover WAL engagement, concurrent writers and readers, directory creation,
 persistence across restarts, and rollback durability.
+
+---
+
+## Sentinel errors
+
+```go
+errors.Is(err, sqlite.ErrNotReady) // no open database; the call was not attempted
+```
+
+---
+
+## Metrics
+
+`Config.OnOperation` is called once per completed `DB` operation with a fixed
+operation name, how long the call took, and the error it returned. It defaults to
+nil, which disables reporting entirely.
+
+```go
+c := sqlite.New(sqlite.Config{
+    OnOperation: func(op string, d time.Duration, err error) {
+        // op is one of: sqlite.select, sqlite.get, sqlite.exec, sqlite.begin_tx, sqlite.commit_tx
+        metrics.Observe(op, d, err)
+    },
+})
+```
+
+`ErrNotReady` is not an operation failure: it means there was no live handle and
+the call was never attempted. Those are reported with a **zero duration**, so
+they never enter the latency distribution. Classify accordingly before counting
+error rates.
+
+See [ADR-0006](../docs/adr/0006-metrics-behind-the-narrow-interface.md).

@@ -210,8 +210,10 @@ func (c *Component) Name() string { return c.name }
 // that need the pool at startup should depend on this component via
 // samsara.WithDependencies so Start has already run.
 //
-// Operating on the pool directly bypasses this component's logging and
-// lifecycle handling; prefer the [DB] interface for anything it covers.
+// Operating on the pool directly bypasses this component's logging,
+// lifecycle handling and metrics: work done through it is not reported to
+// [Config.OnOperation], so it does not appear in the published numbers.
+// Prefer the [DB] interface for anything it covers.
 func (c *Component) Pool() *pgxpool.Pool { return c.getPool() }
 
 // pool returns the current pool under a read lock.

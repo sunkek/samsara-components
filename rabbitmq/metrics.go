@@ -1,6 +1,9 @@
 package rabbitmq
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Operation names reported to [Config.OnOperation]. They are fixed per method
 // and never derived from an exchange or routing key, which are unbounded and
@@ -36,9 +39,17 @@ func (c *Component) record(op string, d time.Duration, err error) {
 // publish methods already funnel through [Component.publish], which takes the
 // channel and its no-live-channel check with it. The operation name is what
 // distinguishes them, so it is threaded down rather than fetched here.
+//
+// Because the check is inside fn rather than ahead of it, the elapsed time is
+// discarded when fn reports [ErrNotReady]: the publish was not attempted, so
+// it is reported with a zero duration like every other module's.
 func (c *Component) observePublish(op string, fn func() error) error {
 	start := time.Now()
 	err := fn()
-	c.record(op, time.Since(start), err)
+	d := time.Since(start)
+	if errors.Is(err, ErrNotReady) {
+		d = 0
+	}
+	c.record(op, d, err)
 	return err
 }

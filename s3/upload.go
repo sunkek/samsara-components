@@ -48,7 +48,7 @@ func (c *Component) Upload(ctx context.Context, r UploadRequest) error {
 func (c *Component) upload(ctx context.Context, r UploadRequest) error {
 	engine := c.getEngine()
 	if engine == nil {
-		return fmt.Errorf("s3 upload: %w", ErrNotReady)
+		return ErrNotReady
 	}
 	if r.Bucket == "" || r.Key == "" {
 		return fmt.Errorf("s3 upload: bucket and key are required")

@@ -205,8 +205,9 @@ func (c *Component) Name() string { return c.name }
 // that need the handle at startup should depend on this component via
 // samsara.WithDependencies so Start has already run.
 //
-// Operating on the handle directly bypasses this component's logging and
-// lifecycle handling.
+// Operating on the handle directly bypasses this component's logging,
+// lifecycle handling and metrics: work done through it is not reported to
+// [Config.OnOperation], so it does not appear in the published numbers.
 func (c *Component) Client() *redis.Client { return c.getClient() }
 
 // getClient returns the current client under a read lock.

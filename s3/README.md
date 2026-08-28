@@ -132,6 +132,8 @@ s3.Config{
     UploadPartSize    int64         // default: 8 MiB — multipart chunk size, floor 5 MiB
     UploadConcurrency int           // default: 5 — parts transferred in parallel
     PathStyleForcing  bool          // default: false; set true for SeaweedFS / local servers
+
+    OnOperation func(op string, d time.Duration, err error) // default: nil — see Metrics
 }
 ```
 
@@ -266,3 +268,40 @@ SeaweedFS credentials used in tests:
 | Secret key | `test` |
 | Bucket | `test` |
 | Path-style | `true` |
+
+---
+
+## Sentinel errors
+
+```go
+errors.Is(err, s3.ErrNotReady) // no live client; the call was not attempted
+```
+
+---
+
+## Metrics
+
+`Config.OnOperation` is called once per completed `Storage` operation with a fixed
+operation name, how long the call took, and the error it returned. It defaults to
+nil, which disables reporting entirely.
+
+```go
+c := s3.New(s3.Config{
+    OnOperation: func(op string, d time.Duration, err error) {
+        // op is one of: s3.upload, s3.download, s3.delete, s3.delete_by_prefix, s3.list_keys, s3.presign_download, s3.presign_upload
+        metrics.Observe(op, d, err)
+    },
+})
+```
+
+`ErrNotReady` is not an operation failure: it means there was no live handle and
+the call was never attempted. Those are reported with a **zero duration**, so
+they never enter the latency distribution. Classify accordingly before counting
+error rates.
+
+Each exported operation reports exactly once, including the ones that paginate
+internally: `ListKeys` and `DeleteByPrefix` are one observation each.
+
+Work done through the escape hatch (``Client()``) is **not** measured.
+
+See [ADR-0006](../docs/adr/0006-metrics-behind-the-narrow-interface.md).

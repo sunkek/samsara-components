@@ -21,9 +21,19 @@ pass — treat them as unconfirmed rather than open.
 ## Cross-cutting
 
 ### X1. No metrics / OpenTelemetry in any component
-**Status: open** (premise corrected 2026-08-26 — every module declares a
-4-method `Logger`: `Debug`/`Info`/`Warn`/`Error`, not a 2-method one. The
-observability gap below is unaffected.)
+**Status: partly shipped** — the per-operation half landed 2026-08-28 in
+`redis/v0.7.0`, `postgresql/v0.4.0`, `s3/v0.4.0`, `sqlite/v0.2.0` and
+`rabbitmq/v0.5.0`: `Config.OnOperation` reports op name, duration and error
+once per call through the narrow interface, per
+[ADR-0006](./docs/adr/0006-metrics-behind-the-narrow-interface.md). `fiber`,
+`grpc`, `grpcclient` and `prometheus` are deliberately not instrumented — none
+has a per-operation caller surface, and serving components want request
+middleware instead (see F2). What remains open: pool-saturation and
+connection-count gauges, spans, and the middleware half.
+
+(Premise corrected 2026-08-26 — every module declares a 4-method `Logger`:
+`Debug`/`Info`/`Warn`/`Error`, not a 2-method one. The observability gap below
+is unaffected.)
 
 Observability is limited to a per-component `Logger`. No component exports
 request counts, latencies, pool stats, or spans. Consumers can't see connection-pool

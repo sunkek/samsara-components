@@ -66,6 +66,9 @@ func TestOnOperation_ReportsEveryPublisherCall(t *testing.T) {
 		if !errors.Is(got[i].err, rabbitmq.ErrNotReady) {
 			t.Errorf("observation %d (%s): reported error = %v, want ErrNotReady", i, op, got[i].err)
 		}
+		if got[i].d != 0 {
+			t.Errorf("observation %d (%s): reported duration = %v, want 0 for an unattempted operation", i, op, got[i].d)
+		}
 	}
 }
 
