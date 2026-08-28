@@ -109,7 +109,7 @@ test-race:
 coverage:
 	@for mod in $(MODULES); do \
 		echo "▶ coverage: $$mod"; \
-		(cd $$mod && go test -coverprofile=coverage.out -covermode=atomic ./... && \
+		(cd $$mod && go test -count=1 -coverprofile=coverage.out -covermode=atomic ./... && \
 			go tool cover -func=coverage.out | tail -1); \
 	done
 
@@ -117,7 +117,7 @@ coverage:
 coverage-check:
 	@fail=0; \
 	for mod in $(MODULES); do \
-		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -count=1 -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		base=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$2}'); \
 		if [ -z "$$base" ]; then \
@@ -142,7 +142,7 @@ coverage-update:
 	@tmp=$$(mktemp); \
 	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
-		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -count=1 -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		integ=$$(grep "^$$mod " $(COVERAGE_BASELINE) | awk '{print $$3}'); \
 		echo "$$mod $$pct $$integ" >> $$tmp; \
@@ -157,9 +157,9 @@ coverage-update-integration:
 	@tmp=$$(mktemp); \
 	sed -n '/^#/p' $(COVERAGE_BASELINE) > $$tmp; \
 	for mod in $$(echo $(MODULES) | tr ' ' '\n' | sort); do \
-		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
+		pct=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -count=1 -coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
-		integ=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -tags integration -timeout=$(INTEGRATION_TIMEOUT) \
+		integ=$$(cd $$mod && GOTOOLCHAIN=$(COVERAGE_TOOLCHAIN) go test -tags integration -count=1 -timeout=$(INTEGRATION_TIMEOUT) \
 			-coverprofile=coverage.out -covermode=atomic ./... > /dev/null && \
 			go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
 		echo "$$mod $$pct $$integ" >> $$tmp; \

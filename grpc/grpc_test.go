@@ -231,11 +231,11 @@ func TestServer_NilAfterStop(t *testing.T) {
 func TestServer_NonNilWhileRunning(t *testing.T) {
 	comp := grpccomp.New(grpccomp.Config{Host: "127.0.0.1", Port: 0})
 	readyCh := make(chan struct{})
+	errCh := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	go func() {
-		_ = comp.Start(ctx, func() { close(readyCh) })
+		errCh <- comp.Start(ctx, func() { close(readyCh) })
 	}()
 	select {
 	case <-readyCh:
@@ -249,5 +249,52 @@ func TestServer_NonNilWhileRunning(t *testing.T) {
 
 	if err := comp.Stop(context.Background()); err != nil {
 		t.Fatalf("Stop: %v", err)
+	}
+
+	// Let Start return before cancelling, so this test always exercises the
+	// Stop path and never races the context-cancellation path — that path has
+	// its own test below.
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start did not return within deadline")
+	}
+	cancel()
+}
+
+// TestServer_NilAfterContextCancel covers the shutdown path in Start that runs
+// when the supervisor cancels the context instead of calling Stop.
+func TestServer_NilAfterContextCancel(t *testing.T) {
+	comp := grpccomp.New(grpccomp.Config{Host: "127.0.0.1", Port: 0})
+	readyCh := make(chan struct{})
+	errCh := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		errCh <- comp.Start(ctx, func() { close(readyCh) })
+	}()
+	select {
+	case <-readyCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start did not become ready within deadline")
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start did not return after context cancellation")
+	}
+
+	if comp.Server() != nil {
+		t.Fatal("expected Server to be nil after context cancellation")
 	}
 }
