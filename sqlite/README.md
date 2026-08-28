@@ -142,6 +142,30 @@ persistence across restarts, and rollback durability.
 
 ---
 
+## Escape hatch
+
+`SQLDB() *sql.DB` returns the underlying handle for `database/sql` features the
+`DB` interface does not cover — prepared statements, row-level scanning, a
+dedicated `Conn`.
+
+```go
+h := db.SQLDB() // nil before Start and after Stop
+stmt, err := h.PrepareContext(ctx, "INSERT INTO events (kind) VALUES (?)")
+```
+
+It is named `SQLDB` rather than `DB` because `DB` is this package's narrow
+interface; the two are different things, and the handle is not a member of that
+interface.
+
+Depend on the component via `samsara.WithDependencies` if you need the handle at
+startup, so `Start` has already run. Working on it directly bypasses the
+component's logging, lifecycle handling and metrics; prefer `DB` for anything it
+covers. Note that an in-memory database pins the pool to a single connection, so
+holding a `Conn` blocks every other query.
+See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## Sentinel errors
 
 ```go

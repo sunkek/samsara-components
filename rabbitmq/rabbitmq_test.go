@@ -254,3 +254,30 @@ func TestConfig_ZeroValueNoPanic(t *testing.T) {
 		t.Error("expected a default name")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestConnAndChannel_NilBeforeStart(t *testing.T) {
+	comp := rabbitmq.New(rabbitmq.Config{})
+	if comp.Conn() != nil {
+		t.Fatal("expected Conn to be nil before Start")
+	}
+	if comp.Channel() != nil {
+		t.Fatal("expected Channel to be nil before Start")
+	}
+}
+
+func TestConnAndChannel_NilAfterStop(t *testing.T) {
+	comp := rabbitmq.New(rabbitmq.Config{})
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if comp.Conn() != nil {
+		t.Fatal("expected Conn to be nil after Stop")
+	}
+	if comp.Channel() != nil {
+		t.Fatal("expected Channel to be nil after Stop")
+	}
+}

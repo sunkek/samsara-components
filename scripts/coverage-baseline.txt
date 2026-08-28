@@ -18,11 +18,11 @@
 # most of their behaviour behind a live server or endpoint, so it is reachable
 # only under -tags integration. A number that *falls* is the signal to act on.
 ./fiber 26.9 80.7
-./grpc 31.6 82.6
+./grpc 77.6 82.6
 ./grpcclient 68.2 83.9
 ./postgresql 67.9 92.9
 ./prometheus 86.5 86.5
-./rabbitmq 55.6 79.0
+./rabbitmq 56.1 79.0
 ./redis 60.6 91.7
 ./s3 40.2 85.4
 ./sqlite 89.9 91.5

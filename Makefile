@@ -5,13 +5,14 @@
 #   make test-race         — unit tests with race detector
 #   make fmt-check         — fail on any gofmt drift across all modules
 #   make vet               — go vet across all modules
+#   make boilerplate-check — fail if the nine copied Logger/Option blocks drift
 #   make lint              — staticcheck across all modules
 #   make vuln              — govulncheck across all modules
 #   make coverage          — unit tests with coverage report
 #   make coverage-check    — fail if any module drops below its recorded baseline
 #   make coverage-update   — rewrite the baseline's unit column
 #   make coverage-update-integration — rewrite both columns (needs Docker)
-#   make check             — fmt-check + vet + lint + test-race (run before pushing)
+#   make check             — fmt-check + boilerplate-check + vet + lint + test-race (run before pushing)
 #   make infra-up          — start Docker Compose services
 #   make infra-down        — stop and remove containers
 #   make test-integration  — start infra, run integration tests, stop infra
@@ -79,8 +80,14 @@ vuln:
 		(cd $$mod && go run $(GOVULNCHECK) ./...); \
 	done
 
+# The nine modules copy Logger, nopLogger, Option, WithLogger and WithName
+# verbatim (AGENTS.md; ADR-0002). This gate is what keeps that true.
+.PHONY: boilerplate-check
+boilerplate-check:
+	@scripts/check-boilerplate.sh
+
 .PHONY: check
-check: fmt-check vet lint test-race
+check: fmt-check boilerplate-check vet lint test-race
 
 # ── Unit tests ────────────────────────────────────────────────────────────────
 

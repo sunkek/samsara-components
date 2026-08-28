@@ -148,10 +148,10 @@ type Logger interface {
 
 type nopLogger struct{}
 
+func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Info(string, ...any)  {}
 func (nopLogger) Warn(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
-func (nopLogger) Debug(string, ...any) {}
 
 // Component is a samsara-compatible RabbitMQ component.
 // Obtain one with [New]; register it with a samsara supervisor.
@@ -232,6 +232,51 @@ var (
 
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
+
+// Conn returns the underlying [*amqp.Connection] — the escape hatch for AMQP
+// work this component does not wrap. Prefer it over [Component.Channel] for
+// anything long-lived: open your own channel from it, since an amqp.Channel is
+// not safe for concurrent use and the component's own channel is shared with
+// every publish and subscription.
+//
+// It returns nil before [Component.Start] and after [Component.Stop], and
+// during a reconnect. Callers that need the connection at startup should
+// depend on this component via samsara.WithDependencies so Start has already
+// run.
+//
+// Work done on a channel opened from this connection bypasses this
+// component's logging, retry topology and metrics: it is not reported to
+// [Config.OnOperation], so it does not appear in the published numbers.
+// Prefer the [Publisher] interface and [Component.Subscribe] for anything they
+// cover.
+func (c *Component) Conn() *amqp.Connection {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conn
+}
+
+// Channel returns the component's own [*amqp.Channel] — the escape hatch for
+// one-off channel operations such as QueueInspect, Qos or a manual Ack policy.
+//
+// The channel is shared with [Component.Publish] and every subscription, and
+// an amqp.Channel is not safe for concurrent use, so anything beyond a
+// short synchronous call belongs on a channel of your own opened from
+// [Component.Conn]. Closing this channel disables the component until its next
+// restart.
+//
+// It returns nil before [Component.Start] and after [Component.Stop], and
+// during a reconnect.
+//
+// Operating on the channel directly bypasses this component's logging, retry
+// topology and metrics: work done through it is not reported to
+// [Config.OnOperation], so it does not appear in the published numbers.
+// Prefer the [Publisher] interface and [Component.Subscribe] for anything they
+// cover.
+func (c *Component) Channel() *amqp.Channel {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ch
+}
 
 // Start dials the broker, opens a channel, re-declares all exchanges and
 // re-binds all subscriptions, calls ready(), then blocks until Stop or ctx

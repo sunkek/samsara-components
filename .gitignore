@@ -28,3 +28,12 @@ Thumbs.db
 # Coverage output
 coverage.out
 coverage.html
+
+# Claude Code. The skills in .claude/skills/ are checked in — they hold the
+# checklists for adding a module, adding an operation to a narrow interface,
+# and changing the copied boilerplate. Everything else under .claude/ is local
+# to one machine. The negation is needed because a global gitignore commonly
+# excludes .claude/ wholesale.
+!.claude/
+.claude/*
+!.claude/skills/

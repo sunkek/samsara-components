@@ -72,11 +72,16 @@ samsara-components/
 │   ├── config.go            # Config, DSN construction, pool sizing
 │   ├── db.go                # DB interface, query API, transactions
 │   ├── sqlite_test.go              # unit tests (temp-file and in-memory databases)
+│   ├── sqlite_internal_test.go     # unit tests needing unexported identifiers
 │   └── sqlite_integration_test.go  # integration tests (//go:build integration)
+├── .claude/skills/          # checklists for adding a module, adding a seam
+│                            # operation, changing the copied boilerplate
 ├── docs/adr/                # architecture decision records
+├── docs/agents/             # module layout, verification, issue tracker
 ├── CONTEXT.md               # glossary — the vocabulary all modules share
 ├── AGENTS.md                # working guide (agents and humans alike)
 ├── scripts/
+│   ├── check-boilerplate.sh  # fails when the nine copied blocks drift apart
 │   ├── coverage-baseline.txt # per-module coverage floor, enforced by make coverage-check
 │   ├── seaweedfs-init.sh    # creates the test bucket once SeaweedFS is healthy
 │   └── seaweedfs-s3.json    # static credentials config for SeaweedFS integration tests

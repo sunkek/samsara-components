@@ -206,3 +206,48 @@ func TestConfig_ZeroValueNoPanic(t *testing.T) {
 		t.Error("expected a default name")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestServer_NilBeforeStart(t *testing.T) {
+	comp := grpccomp.New(grpccomp.Config{})
+	if comp.Server() != nil {
+		t.Fatal("expected Server to be nil before Start")
+	}
+}
+
+func TestServer_NilAfterStop(t *testing.T) {
+	comp := grpccomp.New(grpccomp.Config{})
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if comp.Server() != nil {
+		t.Fatal("expected Server to be nil after Stop")
+	}
+}
+
+func TestServer_NonNilWhileRunning(t *testing.T) {
+	comp := grpccomp.New(grpccomp.Config{Host: "127.0.0.1", Port: 0})
+	readyCh := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = comp.Start(ctx, func() { close(readyCh) })
+	}()
+	select {
+	case <-readyCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start did not become ready within deadline")
+	}
+
+	if comp.Server() == nil {
+		t.Fatal("expected Server to be non-nil while running")
+	}
+
+	if err := comp.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+}
