@@ -148,10 +148,10 @@ type Logger interface {
 
 type nopLogger struct{}
 
+func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Info(string, ...any)  {}
 func (nopLogger) Warn(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
-func (nopLogger) Debug(string, ...any) {}
 
 // Component is a samsara-compatible RabbitMQ component.
 // Obtain one with [New]; register it with a samsara supervisor.
