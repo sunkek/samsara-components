@@ -59,9 +59,27 @@ which is the trade the `uploadEngine` port already makes in `s3`
 ## Rules
 
 - **The helper stays unexported**, one copy per module, like `Logger` and
-  `Option`. Export nothing until a second production sink exists.
+  `Option`.
 - **The sink is a tunable**, so it is configured through `Config` with an
   unexported accessor supplying the no-op default, not through `Option`.
+- **The sink is a callback, not an interface.** `Config.OnOperation
+  func(op string, d time.Duration, err error)`, defaulting to nil. A `Config`
+  field needs a type, so "export nothing" was never available — the choice is
+  only which shape to export. A single func field is the smaller commitment:
+  callers pass a closure rather than implementing a method set we would have to
+  keep stable across nine verbatim copies, and a `Collector` interface stays
+  addable later, without a break, when a second production sink justifies it.
+- **The sink sees this module's error vocabulary**, not the driver's. A miss
+  and an unattempted call are not failures and a sink cannot classify what it
+  cannot see, so the module's own sentinels reach it unchanged — `redis.ErrNil`
+  for an absent key, `ErrNotReady` for no live connection. Each `Config` field
+  documents its module's sentinels.
+- **An unattempted operation reports a zero duration.** With no live connection
+  there is no driver call to time, and reporting elapsed wall time there would
+  put a meaningless sample in the latency distribution.
+- **One observation per exported call**, not per round trip. `redis.Scan` runs
+  a cursor loop and reports once; the caller made one call, and that is the
+  latency they experience. Where the two differ the doc comment says so.
 - **Zero value stays usable.** `Config{}` produces a component whose metrics
   are a no-op, and `TestConfig_ZeroValueNoPanic` continues to pass unchanged.
 - **Operation names are ours**, fixed per method — `redis.set`, `postgres.get`
@@ -86,6 +104,26 @@ which is the trade the `uploadEngine` port already makes in `s3`
 - Nine copies of the helper to keep diffable, one per module, per ADR-0002.
   Prototyping in `redis` first — the shallowest interface with the most
   repetition to absorb — settles the shape before it is copied.
+- The helper is analogous across modules, not verbatim, because the modules it
+  wraps are not. `redis` and `sqlite` fetch the one handle and carry the
+  not-ready check, which is where the repetition they absorb lived; `s3` has
+  three handles and leaves the check inside each operation; `rabbitmq` threads
+  the operation name into the single publish path the three methods already
+  shared; `postgresql` has no not-ready check to carry. The verbatim rule in
+  ADR-0002 covers `Logger`, `Option`, `WithLogger` and `WithName`, and does not
+  extend here.
+- `fiber`, `grpc`, `grpcclient` and `prometheus` are not instrumented: none has
+  a per-operation caller surface. Serving components want request middleware,
+  which is a different design; `prometheus` is the sink, not a source.
+- Two gaps surfaced while replicating, both out of scope for instrumentation
+  and worth their own change: `postgresql` panics on an unstarted component
+  where the others return an error, and `sqlite`'s equivalent sentinel is
+  unexported, so a caller cannot classify it the way `redis.ErrNotReady`
+  allows.
+- Instrumenting a component is a minor release of that module: `Config` gains
+  an exported field. Independent versioning
+  ([ADR-0001](./0001-one-module-per-component.md)) keeps each one separate, so
+  the nine need not move together.
 - Pool saturation and connection-count gauges do not fit a per-call helper;
   they are sampled from the driver handle and are a separate follow-up.
 - What is genuinely shared here is convention, not code: the operation-name

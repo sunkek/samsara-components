@@ -276,23 +276,27 @@ var _ Publisher = (*Component)(nil)
 // in your own retry loop — the appropriate strategy (retry, dead-letter, drop)
 // is a domain concern, not an infrastructure one.
 func (c *Component) Publish(ctx context.Context, exchange, routingKey string, contentType ContentType, body []byte) error {
-	return c.publish(ctx, exchange, routingKey, amqp.Publishing{
-		ContentType:  string(contentType),
-		DeliveryMode: amqp.Persistent,
-		Timestamp:    time.Now().UTC(),
-		Body:         body,
+	return c.observePublish(opPublish, func() error {
+		return c.publish(ctx, exchange, routingKey, amqp.Publishing{
+			ContentType:  string(contentType),
+			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now().UTC(),
+			Body:         body,
+		})
 	})
 }
 
 // PublishWithType is like [Publish] but also sets the AMQP message type field,
 // useful for event-driven architectures where consumers route on message type.
 func (c *Component) PublishWithType(ctx context.Context, exchange, routingKey string, contentType ContentType, messageType string, body []byte) error {
-	return c.publish(ctx, exchange, routingKey, amqp.Publishing{
-		ContentType:  string(contentType),
-		Type:         messageType,
-		DeliveryMode: amqp.Persistent,
-		Timestamp:    time.Now().UTC(),
-		Body:         body,
+	return c.observePublish(opPublishWithType, func() error {
+		return c.publish(ctx, exchange, routingKey, amqp.Publishing{
+			ContentType:  string(contentType),
+			Type:         messageType,
+			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now().UTC(),
+			Body:         body,
+		})
 	})
 }
 
@@ -300,12 +304,14 @@ func (c *Component) PublishWithType(ctx context.Context, exchange, routingKey st
 // message, letting callers carry custom metadata (e.g. an attempt counter) on a
 // republished message.
 func (c *Component) PublishWithHeaders(ctx context.Context, exchange, routingKey string, contentType ContentType, headers amqp.Table, body []byte) error {
-	return c.publish(ctx, exchange, routingKey, amqp.Publishing{
-		ContentType:  string(contentType),
-		Headers:      headers,
-		DeliveryMode: amqp.Persistent,
-		Timestamp:    time.Now().UTC(),
-		Body:         body,
+	return c.observePublish(opPublishWithHeaders, func() error {
+		return c.publish(ctx, exchange, routingKey, amqp.Publishing{
+			ContentType:  string(contentType),
+			Headers:      headers,
+			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now().UTC(),
+			Body:         body,
+		})
 	})
 }
 
