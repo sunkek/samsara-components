@@ -41,6 +41,18 @@ across all of them.
   and fails with a diff when one copy drifts. Part of `make check`. It found
   one live drift on introduction: `rabbitmq`'s `nopLogger` methods were
   declared in a different order from the other eight, now aligned.
+- **Coverage targets** pass `-count=1`. Without it the Go test cache could
+  serve a stale result, and `make coverage-update` would record whatever
+  coverage that cached run happened to reach. `grpc`'s baseline was recorded
+  that way at 77.6% — a figure no fresh run reproduces — and `make
+  coverage-check` failed in CI at the honest 70.2%.
+
+### Fixed
+- **grpc:** `TestServer_NonNilWhileRunning` raced its own `defer cancel()`
+  against `Start`'s return, so whether the context-cancellation path was
+  covered varied between runs. It now waits for `Start` to return before
+  cancelling, and the cancellation path has its own test. Unit coverage is a
+  deterministic 80.8%; the baseline is corrected to match.
 
 ### Docs
 - **`CONTEXT.md`** gains glossary sections for the seam vocabulary (narrow
