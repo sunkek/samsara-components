@@ -7,21 +7,21 @@ lifecycle (`Start`, `Stop`, `Health`).
 
 [CONTEXT.md](./CONTEXT.md) is the glossary. Read it before naming anything, and
 when a term in the code reads ambiguously — component, ready signal, config,
-option, subscription, retry topology.
+option, narrow interface, port, subscription, retry topology.
 
 ## Before you edit
 
-Read the module's own `<module>.go` first. The nine are deliberately
-near-identical in shape, so the answer to "how should this look?" is almost
-always "like the other eight": `Component` struct, `New(cfg, opts...)`,
-lifecycle triple, `Config` with unexported accessors supplying defaults.
+Read the module's own `<module>.go` first: the nine are near-identical, so
+"like the other eight" is almost always the answer to "how should this look?"
 
-File names follow the concern, and vary by module: `Config` lives in
-`config.go` where the module has one and in `<module>.go` otherwise; the
-caller-facing surface is `client.go`, `db.go`, `messaging.go`, `operations.go`,
-or `observer.go` depending on what the component does. Tests sit next to the
-code, integration tests in `*_integration_test.go` behind
-`//go:build integration`.
+When you are adding a file, hunting for one, or deciding where a test belongs,
+read [docs/agents/module-layout.md](./docs/agents/module-layout.md) — file
+names follow the concern and vary by module.
+
+Three workflows have a skill in `.claude/skills/`, holding the checklist the
+step needs: `new-module` (a tenth component), `seam-operation` (an operation on
+a narrow interface), `boilerplate-sync` (a change to the five copied
+identifiers).
 
 Read the ADR before reopening one of these — each records a trade-off already
 settled, and the reasons are not visible in the code:
@@ -40,6 +40,9 @@ settled, and the reasons are not visible in the code:
 - [ADR-0006](./docs/adr/0006-metrics-behind-the-narrow-interface.md) — why
   metrics go behind `DB`/`KV`/`Storage`/`Publisher` instead of on a new
   exported collector seam.
+- [ADR-0007](./docs/adr/0007-config-fields-are-the-interface.md) — why `Config`
+  keeps one unexported accessor per tunable, and why field count is the number
+  that matters.
 
 ## Conventions
 
@@ -57,7 +60,9 @@ settled, and the reasons are not visible in the code:
   module name, except `postgresql`, which tags `postgres:`.
 - **Boilerplate stays identical:** the nine copies of `Logger`, `nopLogger`,
   `Option`, `WithLogger`, and `WithName` are copied verbatim, so the nine stay
-  diffable. Change one and change all nine the same way.
+  diffable. Change one and change all nine the same way; `make
+  boilerplate-check` compares them and fails on drift. `WithName`'s doc comment
+  is the one part that is module-specific.
 - **Not ready is an error, not a panic.** A component with no live handle —
   before `Start`, after `Stop`, mid-restart — returns its exported
   `ErrNotReady` from every operation on its narrow interface, so callers can
@@ -67,6 +72,14 @@ settled, and the reasons are not visible in the code:
   declared as an interface — `postgresql.DB`, `sqlite.DB`, `redis.KV`,
   `s3.Storage`, `rabbitmq.Publisher` — with a `var _ Iface = (*Component)(nil)`
   assertion beside it. A new operation goes on both.
+- **Test at the seam.** Where a module has a narrow interface, that interface is
+  the agreed seam and tests exercise behaviour through it, typed as the
+  interface rather than as `*Component`. Tests for the lifecycle triple and for
+  `Config` defaults sit on `*Component`, which is where that behaviour lives.
+  Reach for `_internal_test.go` only when the behaviour genuinely cannot be
+  observed through an exported surface — and never assert on a driver handle
+  obtained from the escape hatch accessor, which is the caller's escape hatch,
+  not a test seam.
 - **Doc comments:** every exported identifier. State the pre-`Start` behaviour
   when a method is callable before `Start`.
 - **Import the runtime nowhere.** Components satisfy samsara's interfaces
@@ -74,34 +87,18 @@ settled, and the reasons are not visible in the code:
 
 ## Verifying
 
-Run `make` targets rather than ad hoc `go` commands, so results match CI. The
-`Makefile` lists them; `make check` before pushing, `make test-all` before
-opening a PR. `make check` gates on `gofmt` too, and `make fmt` fixes drift.
-`make lint` installs `staticcheck` if it is missing, and `make vuln` installs
-`govulncheck`. `make coverage-check` compares each module against
-`scripts/coverage-baseline.txt` and fails on a drop of more than 2 points; if a
-change moves the numbers in either direction, run `make coverage-update` and
-commit the file.
+Run `make` targets rather than ad hoc `go` commands, so results match CI:
+`make check` before pushing, `make test-all` before opening a PR. For the full
+set — coverage baselines, integration services, port overrides, per-module
+invocations — read [docs/agents/verifying.md](./docs/agents/verifying.md).
 
-Integration tests need the Docker services in `docker-compose.yml`;
-`make test-integration` brings them up and down around the run. If a host port
-is already taken, override it — `SC_POSTGRES_PORT`, `SC_REDIS_PORT`,
-`SC_RABBITMQ_PORT`, `SC_S3_PORT` are read by both Compose and the tests.
-
-One module at a time:
-
-```bash
-cd postgresql && go test -race -count=3 ./...
-cd postgresql && go test -race -count=1 -tags integration ./...
-```
-
-Unit tests cover lifecycle and config; integration tests cover real network
-behaviour. A behaviour change lands with a test at the level that can observe
-it.
-
-## Commits and PRs
+## Commits, issues and PRs
 
 Short, imperative, scoped to a module or a behaviour: `postgresql: add WithName
 option`. PRs: summary, tests for behaviour changes, linked issue, and updates to
 the module's `README.md` and the root `CHANGELOG.md` when a public API or config
 field moves.
+
+Issues and PRs live on GitHub. To resolve an issue reference, find the spec
+behind a branch, or file one, read
+[docs/agents/issue-tracker.md](./docs/agents/issue-tracker.md).
