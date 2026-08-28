@@ -153,6 +153,26 @@ var (
 // Name implements samsara.Component.
 func (c *Component) Name() string { return c.name }
 
+// Server returns the underlying [*grpc.Server] — the escape hatch for
+// grpc-go features this component does not surface, such as GetServiceInfo
+// and the server's own graceful-stop control.
+//
+// It cannot be used to add behaviour: the server is built inside
+// [Component.Start], so Server returns nil until Start has run, and by then it
+// is already serving — grpc-go panics on RegisterService after Serve has
+// begun. Use [Component.Register] for service registration and
+// [Component.AddOption] for interceptors, which run at the right point in
+// Start.
+//
+// It returns nil again after [Component.Stop]. Callers that need the server at
+// startup should depend on this component via samsara.WithDependencies so
+// Start has already run.
+func (c *Component) Server() *grpclib.Server {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.server
+}
+
 // Register adds a [RegisterFunc] that will be called during [Component.Start]
 // to register service implementations on the live *grpc.Server.
 // Register is safe to call before or after Start.
@@ -274,6 +294,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 			close(closed)
 			c.stopCh = closed
 			srv2 := c.server
+			c.server = nil // clear so the accessor reports not-ready
 			c.serving = false
 			c.mu.Unlock()
 
@@ -348,6 +369,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	close(closed)
 	c.stopCh = closed
 	srv := c.server
+	c.server = nil // clear so the accessor reports not-ready
 	c.serving = false
 	c.mu.Unlock()
 

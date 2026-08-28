@@ -455,8 +455,8 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 // App returns the underlying [*fiber.App] — the escape hatch for Fiber
 // features this component does not surface.
 //
-// Unlike the other components' accessors, this one cannot be used to add
-// behaviour: the app is built inside [Component.Start], so App returns nil
+// It cannot be used to add behaviour: the app is built inside
+// [Component.Start], so App returns nil
 // until Start has run, and by then Fiber is already listening — routes and
 // middleware registered afterwards are not served. Use [Component.Register]
 // and [Component.Use] for those, which run at the right point in Start.

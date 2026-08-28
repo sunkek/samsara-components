@@ -55,3 +55,117 @@ _Avoid_: retry mechanism, backoff setup.
 The terminal destination of a delivery that exhausted its retries. Nothing in
 these components consumes from it.
 _Avoid_: failure queue, error queue.
+
+## Seams and escape hatches
+
+**Narrow interface**:
+The caller-facing surface of a component, declared as an interface next to the
+component that satisfies it — `postgresql.DB`, `sqlite.DB`, `redis.KV`,
+`s3.Storage`, `rabbitmq.Publisher`. This is the seam callers depend on, tests
+exercise, and fakes implement.
+_Avoid_: contract, port (that word is taken, below), abstraction.
+
+**Escape hatch accessor**:
+The exported accessor returning a component's driver handle — `Pool`, `Client`,
+`App`, `Conn`, `Server`, `Channel`, `SQLDB`, `Registry` — for the long tail of
+driver features the narrow interface does not wrap. Nil before `Start` and
+after `Stop`, and never a member of the narrow interface. `prometheus.Registry`
+is the one accessor live from `New`, because collectors are registered on it
+before scraping begins ([ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md)).
+_Avoid_: raw accessor, unwrap, getter.
+
+**Port**:
+An *unexported* interface a component depends on internally, so an unstable
+driver stays out of the exported surface. `s3`'s `uploadEngine` is the only
+one.
+_Avoid_: adapter (that is the thing satisfying the port), driver interface.
+
+**Not ready**:
+The state of a component with no live handle — before `Start`, after `Stop`,
+mid-restart. Every operation on a narrow interface returns the module's
+exported `ErrNotReady` in that state, so callers make one `errors.Is` check.
+_Avoid_: closed, disconnected, uninitialised.
+
+## HTTP (fiber)
+
+**RegisterFunc**:
+A caller-supplied callback receiving the root router, already scoped to
+`Config.PathPrefix`, on which the caller registers routes and sub-group
+middleware. Called in registration order during `Start`, after the built-in
+middleware stack.
+_Avoid_: handler, route registrar, mount func.
+
+**Path prefix**:
+The URL prefix every registered route sits under, applied once by the component
+rather than repeated by each `RegisterFunc`.
+_Avoid_: base path, mount point.
+
+**Skipper**:
+A predicate deciding, per request, that a middleware should not run. Built by
+`ExcludeRoutes` from a set of `Route` values.
+_Avoid_: filter, matcher, exclusion.
+
+**HTTPStatuser**:
+An error that carries its own HTTP status code, which the default error handler
+honours instead of falling back to 500.
+_Avoid_: status error, coded error.
+
+## gRPC (grpc, grpcclient)
+
+**RegisterFunc**:
+The server-side equivalent of fiber's: a callback receiving the
+`*grpc.Server` on which the caller registers service implementations, called
+during `Start`.
+_Avoid_: service registrar, binder.
+
+**Dial option**:
+A `grpc.DialOption` accumulated on `grpcclient` before `Start` via `AddOption`,
+applied when the connection is established. Distinct from `Option`, which is
+this repository's own construction vocabulary.
+_Avoid_: client option, connection setting.
+
+## Metrics (prometheus)
+
+**Observer**:
+The bridge from samsara supervisor telemetry into a Prometheus registry,
+satisfying `samsara.MetricsObserver` structurally. Its methods run on the
+supervisor goroutine and are therefore non-blocking in-memory updates only.
+_Avoid_: collector, reporter, metrics sink.
+
+**Operation callback**:
+The per-operation hook a data component invokes — `Config.OnOperation`,
+receiving operation name, duration and error — which is how metrics reach a
+registry without a new exported seam. See
+[ADR-0006](./docs/adr/0006-metrics-behind-the-narrow-interface.md).
+_Avoid_: metrics hook, instrumentation callback.
+
+## Object storage (s3)
+
+**Upload engine**:
+The unexported port through which the component writes object bodies, keeping
+the pre-1.0 transfer manager out of the exported surface. See
+[ADR-0004](./docs/adr/0004-transfermanager-behind-an-internal-port.md).
+_Avoid_: uploader, transfer manager (that is the one adapter, not the port).
+
+**Canned ACL**:
+An S3 access-control preset, carried as the `ACL` type and defaulting to
+`ACLPrivate`.
+_Avoid_: permission, access level.
+
+**Presigned URL**:
+A time-limited signed URL that lets a third party read or write one object
+without credentials, built from a `PresignRequest`.
+_Avoid_: signed link, temporary URL.
+
+## SQL (postgresql, sqlite)
+
+**TxFinaliser**:
+The minimal transaction interface `CommitTx` requires — commit and rollback,
+nothing else — so tests can supply a stub instead of a real database. The pgx
+and `database/sql` versions differ in whether the methods take a context.
+_Avoid_: transaction, tx handle.
+
+**Commit-or-rollback**:
+The `CommitTx(tx, inErr)` pattern: one call that commits when the incoming
+error is nil and rolls back otherwise, so callers do not repeat the branch.
+_Avoid_: finalise, close transaction.

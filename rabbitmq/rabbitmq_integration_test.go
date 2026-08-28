@@ -366,3 +366,19 @@ func TestIntegration_PublishWithType(t *testing.T) {
 		t.Fatal("timed out waiting for typed message")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch (ADR-0005)
+// ----------------------------------------------------------------------------
+
+func TestIntegration_ConnAndChannel_NonNilWhileRunning(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	if comp.Conn() == nil {
+		t.Fatal("expected Conn to be non-nil while running")
+	}
+	if comp.Channel() == nil {
+		t.Fatal("expected Channel to be non-nil while running")
+	}
+}

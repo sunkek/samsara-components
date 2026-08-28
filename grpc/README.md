@@ -249,6 +249,26 @@ state from the previous run leaks into the new one.
 
 ---
 
+## Escape hatch
+
+`Server() *grpc.Server` returns the underlying server for grpc-go features this
+component does not surface, such as `GetServiceInfo`.
+
+```go
+srv := s.Server() // nil before Start and after Stop
+info := srv.GetServiceInfo()
+```
+
+Unlike the other components' accessors, this one cannot be used to add
+behaviour: the server is built inside `Start`, so `Server` returns nil until
+`Start` has run, and by then it is already serving — grpc-go panics on
+`RegisterService` after `Serve` has begun. Use `Register` for service
+registration and `AddOption` for interceptors, which run at the right point in
+`Start`.
+See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## Multiple servers
 
 ```go

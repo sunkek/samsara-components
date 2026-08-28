@@ -8,6 +8,45 @@ across all of them.
 
 ---
 
+## Unreleased
+
+### Added
+- **sqlite, grpc, rabbitmq:** the driver escape hatch accessor these three were
+  missing, closing the gap against
+  [ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md), which requires
+  one on every component. All nine export one now; `prometheus.Registry` stays
+  the documented exception to the nil-before-`Start` rule, since its registry
+  is built in `New` and collectors go on it before scraping. `sqlite.SQLDB() *sql.DB` (named for the driver
+  package, since `sqlite.DB` is the narrow interface), `grpc.Server()
+  *grpc.Server`, and `rabbitmq.Conn() *amqp.Connection` with
+  `rabbitmq.Channel() *amqp.Channel`. All return nil before `Start` and after
+  `Stop`, and none is a member of a narrow interface.
+
+### Fixed
+- **grpc:** `Stop` left the internal `*grpc.Server` set after shutdown, so the
+  new `Server()` accessor would have handed out a stopped server. It is cleared
+  now, in `Stop` and in `Start`'s context-cancellation path, matching every
+  other component's handling of its handle.
+
+### Tooling
+- **`make boilerplate-check`** compares the five identifiers all nine modules
+  copy verbatim — `Logger`, `nopLogger`, `Option`, `WithLogger`, `WithName` —
+  and fails with a diff when one copy drifts. Part of `make check`. It found
+  one live drift on introduction: `rabbitmq`'s `nopLogger` methods were
+  declared in a different order from the other eight, now aligned.
+
+### Docs
+- **Repository:** `CONTEXT.md` gains glossary sections for the seam vocabulary
+  (narrow interface, escape hatch accessor, port, not ready) and for the terms
+  specific to HTTP, gRPC, metrics, object storage and SQL.
+- **ADR-0007** records a depth audit of the `Config` pattern: the unexported
+  accessors are implementation, not interface, and field count is the number
+  worth defending. No code change followed.
+- **AGENTS.md** states the test-at-the-seam rule and moves module layout,
+  verification detail and the GitHub issue workflow into `docs/agents/`.
+
+---
+
 ## redis/v0.7.1, postgresql/v0.4.1, s3/v0.4.1, sqlite/v0.2.1, rabbitmq/v0.5.1 — 2026-08-28
 
 Follow-up to the metrics seam: two components did not honour the zero-duration

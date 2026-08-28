@@ -258,6 +258,34 @@ sup.Add(failover, samsara.WithTier(samsara.TierSignificant))
 
 ---
 
+## Escape hatch
+
+Two accessors, for AMQP work the `Publisher` interface and `Subscribe` do not
+cover:
+
+```go
+conn := mq.Conn()    // *amqp.Connection — nil before Start, after Stop, during a reconnect
+ch := mq.Channel()   // *amqp.Channel — the component's own, shared channel
+```
+
+Prefer `Conn` and open a channel of your own for anything long-lived: an
+`amqp.Channel` is not safe for concurrent use, and the component's channel is
+shared with every publish and every subscription. Closing that channel disables
+the component until its next restart.
+
+```go
+own, err := mq.Conn().Channel()
+defer own.Close()
+_, err = own.QueueInspect("orders")
+```
+
+Depend on the component via `samsara.WithDependencies` if you need the
+connection at startup, so `Start` has already run. Work done through either
+accessor bypasses the component's logging, retry topology and metrics.
+See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
+
+---
+
 ## Sentinel errors
 
 ```go

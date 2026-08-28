@@ -117,6 +117,24 @@ func (c *Component) getDB() *sql.DB {
 	return c.db
 }
 
+// SQLDB returns the underlying [*sql.DB] — the escape hatch for database/sql
+// features this component does not wrap: prepared statements, row-level
+// scanning, driver-specific connection use via Conn.
+//
+// It is named SQLDB rather than DB because [DB] is this package's narrow
+// interface; the two are different things, and the handle is not a member of
+// that interface.
+//
+// It returns nil before [Component.Start] and after [Component.Stop]. Callers
+// that need the handle at startup should depend on this component via
+// samsara.WithDependencies so Start has already run.
+//
+// Operating on the handle directly bypasses this component's logging,
+// lifecycle handling and metrics: work done through it is not reported to
+// [Config.OnOperation], so it does not appear in the published numbers.
+// Prefer the [DB] interface for anything it covers.
+func (c *Component) SQLDB() *sql.DB { return c.getDB() }
+
 // Start opens the database, verifies it is actually usable, calls ready() to
 // unblock the supervisor, then blocks until Stop or ctx cancellation.
 //
