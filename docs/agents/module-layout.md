@@ -26,6 +26,9 @@ File names follow the concern, and vary by module:
 - **`internal.go`, `upload.go`, `transfermanager_engine.go`** — s3 only, the
   unexported upload port and its adapter (see
   [ADR-0004](../adr/0004-transfermanager-behind-an-internal-port.md)).
+- **`health.go`** — s3 only, the connectivity probe `Start` and `Health` share,
+  with the probe-result errors it exports. Elsewhere the probe is a ping in
+  `Start` and needs no file of its own.
 
 ## Tests
 

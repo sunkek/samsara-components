@@ -43,11 +43,19 @@ settled, and the reasons are not visible in the code:
 - [ADR-0007](./docs/adr/0007-config-fields-are-the-interface.md) — why `Config`
   keeps one unexported accessor per tunable, and why field count is the number
   that matters.
+- [ADR-0008](./docs/adr/0008-addoption-is-the-construction-escape-hatch.md) —
+  why five components take raw driver options through `AddOption`, what the
+  mutators may override, and why `fiber` has none.
 
 ## Conventions
 
 - **Scope:** stay in the module you were asked about. Sharing a workspace is not
   a reason to touch the other eight.
+- **Driver settings the component does not model go through `AddOption`**, not
+  a new `Config` field, on the five components that have it — `postgresql`,
+  `redis`, `s3`, `grpc`, `grpcclient`. Mutators run after the component's own
+  settings and are re-applied on every `Start`
+  ([ADR-0008](./docs/adr/0008-addoption-is-the-construction-escape-hatch.md)).
 - **Tunables belong in `Config`**, with an unexported accessor supplying the
   default. `Option` carries dependencies and identity (`WithLogger`,
   `WithName`); `fiber.WithSwagger` is the one tunable that arrived as an

@@ -8,7 +8,7 @@ across all of them.
 
 ---
 
-## postgresql/v0.5.0, redis/v0.8.0, s3/v0.6.0 — 2026-09-02
+## postgresql/v0.5.0, redis/v0.8.0, s3/v0.5.0 — 2026-09-02
 
 ### Added
 - **postgresql, redis, s3:** `AddOption`, the raw-driver escape hatch these
@@ -22,28 +22,27 @@ across all of them.
   Mutators run after the component's own settings, so they can override
   `Config`, and are kept rather than consumed: every supervisor restart
   re-applies them in the order added. Adding one after `Start` affects the next
-  `Start`, not the running handle.
+  `Start`, not the running handle. The shape and its limits are recorded in
+  [ADR-0008](./docs/adr/0008-addoption-is-the-construction-escape-hatch.md),
+  which also says why `fiber` is deliberately excluded.
 
-  `fiber` is deliberately not included: its app is built from a `fiber.Config`
-  value rather than option functions, so the same shape does not port.
-
----
-
-## s3/v0.5.0 — 2026-09-02
-
-### Added
 - **s3:** `Config.HealthBucket` makes the connectivity probe address a real
-  bucket instead of a synthetic name. With it set, only a successful
-  `HeadBucket` counts as healthy: 403 is reported as `ErrProbeForbidden` and
-  404 as `ErrProbeBucketMissing`, both checkable with `errors.Is`. This closes
-  ROADMAP S3 — the synthetic probe accepts 403 as "reachable", so a credential
-  scoped to the wrong buckets reported healthy until the first upload failed.
-  The strict check runs in `Start` too, so a mis-scoped deployment fails at
-  boot rather than in traffic.
+  bucket instead of a synthetic name — ROADMAP S3. With it set, only a
+  successful `HeadBucket` counts as healthy: 403 is reported as
+  `ErrProbeForbidden` and 404 as `ErrProbeBucketMissing`, both checkable with
+  `errors.Is`.
 
-  Leaving `HealthBucket` empty keeps the previous synthetic-probe behaviour
-  unchanged, so this is additive for existing callers. Setting it requires the
-  credential to hold `s3:ListBucket` on that bucket.
+  The synthetic probe accepts 403 as "reachable", so a credential scoped to the
+  wrong buckets reported healthy until the first upload failed. The strict
+  check runs in `Start` too, so a mis-scoped deployment fails at boot rather
+  than in traffic. Leaving `HealthBucket` empty keeps the previous behaviour,
+  so this is additive for existing callers; setting it requires the credential
+  to hold `s3:ListBucket` on that bucket.
+
+### Docs
+- **ADR-0008** records `AddOption` as the construction-time half of the escape
+  hatch, with `CONTEXT.md` carrying the term ("driver option") and the s3
+  probe-bucket vocabulary.
 
 ---
 

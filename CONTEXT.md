@@ -74,6 +74,16 @@ is the one accessor live from `New`, because collectors are registered on it
 before scraping begins ([ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md)).
 _Avoid_: raw accessor, unwrap, getter.
 
+**Driver option**:
+A native driver setting accumulated on a component before `Start` through
+`AddOption`, applied when the handle is built and re-applied on every restart —
+`func(*pgxpool.Config)`, `func(*redis.Options)`, `func(*s3.Options)`, and the
+grpc pair's `DialOption`/`ServerOption`. The construction-time half of the
+escape hatch, where the accessor is the runtime half
+([ADR-0008](./docs/adr/0008-addoption-is-the-construction-escape-hatch.md)).
+Distinct from `Option`, which is this repository's own construction vocabulary.
+_Avoid_: raw option, driver config, override.
+
 **Port**:
 An *unexported* interface a component depends on internally, so an unstable
 driver stays out of the exported surface. `s3`'s `uploadEngine` is the only
@@ -120,8 +130,9 @@ _Avoid_: service registrar, binder.
 
 **Dial option**:
 A `grpc.DialOption` accumulated on `grpcclient` before `Start` via `AddOption`,
-applied when the connection is established. Distinct from `Option`, which is
-this repository's own construction vocabulary.
+applied when the connection is established. The server-side equivalent is a
+`grpc.ServerOption` on `grpc`. Both are driver options (below); the grpc pair
+keep the driver's own names.
 _Avoid_: client option, connection setting.
 
 ## Metrics (prometheus)
@@ -146,6 +157,14 @@ The unexported port through which the component writes object bodies, keeping
 the pre-1.0 transfer manager out of the exported surface. See
 [ADR-0004](./docs/adr/0004-transfermanager-behind-an-internal-port.md).
 _Avoid_: uploader, transfer manager (that is the one adapter, not the port).
+
+**Probe bucket**:
+The bucket `HeadBucket` addresses in the connectivity check `Start` and
+`Health` share. Empty `Config.HealthBucket` probes a synthetic name and treats
+any answer as reachable; a configured real bucket makes the probe strict, so a
+credential scoped elsewhere fails with `ErrProbeForbidden` rather than
+reporting healthy.
+_Avoid_: health bucket (that is the field), test bucket, canary.
 
 **Canned ACL**:
 An S3 access-control preset, carried as the `ACL` type and defaulting to
