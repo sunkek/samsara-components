@@ -141,6 +141,10 @@ type Component struct {
 	log  Logger
 	name string
 
+	// optsMu guards opts, which Start reads and AddOption appends to.
+	optsMu sync.Mutex
+	opts   []func(*redis.Options)
+
 	// mu guards client and stopCh across Start/Stop/restart.
 	mu     sync.RWMutex
 	client *redis.Client
@@ -217,6 +221,34 @@ func (c *Component) getClient() *redis.Client {
 	return c.client
 }
 
+// AddOption appends a native [redis.Options] mutator applied when the client
+// is created during [Component.Start] — the escape hatch for driver settings
+// [Config] does not model, such as retry backoff, connection-pool timeouts, or
+// a custom Dialer.
+//
+// AddOption must be called before Start; options added later apply only from
+// the next Start, which the supervisor runs on restart. Options are kept, so
+// every restart re-applies them in the order added, after this component's own
+// settings — a mutator can therefore override Config.
+//
+//	kv.AddOption(func(o *redis.Options) {
+//	    o.MaxRetries = 5
+//	})
+func (c *Component) AddOption(opt func(*redis.Options)) {
+	c.optsMu.Lock()
+	c.opts = append(c.opts, opt)
+	c.optsMu.Unlock()
+}
+
+// driverOptions returns the caller-supplied option mutators.
+func (c *Component) driverOptions() []func(*redis.Options) {
+	c.optsMu.Lock()
+	defer c.optsMu.Unlock()
+	out := make([]func(*redis.Options), len(c.opts))
+	copy(out, c.opts)
+	return out
+}
+
 // Start creates the Redis client, pings the server to confirm connectivity,
 // calls ready() to unblock the supervisor, then blocks until Stop or ctx
 // cancellation.
@@ -248,6 +280,10 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 		PoolSize:     c.cfg.PoolSize,
 		TLSConfig:    tlsCfg,
 	}
+	for _, opt := range c.driverOptions() {
+		opt(opts)
+	}
+
 	client := redis.NewClient(opts)
 
 	pingCtx, cancel := context.WithTimeout(ctx, c.cfg.connectTimeout())

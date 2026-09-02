@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/sunkek/samsara-components/s3"
 )
 
@@ -151,4 +152,42 @@ func TestHealth_ConfiguredBucket_OK(t *testing.T) {
 	if err := comp.Health(context.Background()); err != nil {
 		t.Fatalf("Health = %v, want nil", err)
 	}
+}
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch: AddOption
+// ----------------------------------------------------------------------------
+
+// Options added before Start reach the AWS client, and are re-applied on every
+// later Start so a supervisor restart does not silently drop them.
+func TestAddOption_AppliedOnEveryStart(t *testing.T) {
+	srv := newProbeServer(t, http.StatusOK)
+
+	var applied int
+	comp := s3.New(probeConfig(srv.URL, ""), s3.WithLogger(&testLogger{t}))
+	comp.AddOption(func(o *awss3.Options) {
+		applied++
+		o.RetryMaxAttempts = 7
+	})
+
+	for run := 1; run <= 2; run++ {
+		if err := startComponent(t, comp); err != nil {
+			t.Fatalf("Start %d: %v", run, err)
+		}
+		if applied != run {
+			t.Fatalf("after Start %d the option ran %d times, want %d", run, applied, run)
+		}
+		if got := comp.Client().Options().RetryMaxAttempts; got != 7 {
+			t.Errorf("RetryMaxAttempts = %d, want 7", got)
+		}
+		if err := comp.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop %d: %v", run, err)
+		}
+	}
+}
+
+// AddOption before Start is safe on a component that never starts.
+func TestAddOption_BeforeStart(t *testing.T) {
+	comp := s3.New(s3.Config{})
+	comp.AddOption(func(*awss3.Options) {})
 }

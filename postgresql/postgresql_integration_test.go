@@ -18,6 +18,7 @@ import (
 
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sunkek/samsara-components/postgresql"
 	"os"
 )
@@ -317,5 +318,17 @@ func TestIntegration_Pool_UsableAfterStart(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("got %d, want 1", n)
+	}
+}
+
+// TestIntegration_AddOption_Applied exercises ROADMAP X3: a native
+// pgxpool.Config mutator must reach the pool the component builds.
+func TestIntegration_AddOption_Applied(t *testing.T) {
+	comp := testComp(t)
+	comp.AddOption(func(cfg *pgxpool.Config) { cfg.MaxConnLifetime = 42 * time.Minute })
+	startComp(t, comp)
+
+	if got := comp.Pool().Config().MaxConnLifetime; got != 42*time.Minute {
+		t.Fatalf("MaxConnLifetime = %v, want 42m — AddOption did not reach the pool", got)
 	}
 }

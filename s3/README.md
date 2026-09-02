@@ -165,6 +165,21 @@ that is deliberately not exported —
 accessor itself follows
 [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
 
+### Driver options
+
+`AddOption` appends an `s3.Options` mutator applied when the AWS client is built
+in `Start` — the settings `Config` does not model, such as retry strategy or a
+custom HTTP client.
+
+```go
+store.AddOption(func(o *s3.Options) {
+    o.RetryMaxAttempts = 5
+})
+```
+
+Call it before `Start`. Options are kept and re-applied on every restart, after
+the component's own settings, so a mutator can override `Config`.
+
 ---
 
 ## API reference

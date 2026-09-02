@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sunkek/samsara-components/postgresql"
 )
 
@@ -203,4 +204,10 @@ func TestPool_NilAfterStop(t *testing.T) {
 	if comp.Pool() != nil {
 		t.Fatal("expected Pool to be nil after Stop")
 	}
+}
+
+// AddOption before Start is safe on a component that never starts.
+func TestAddOption_BeforeStart(t *testing.T) {
+	comp := postgresql.New(postgresql.Config{})
+	comp.AddOption(func(*pgxpool.Config) {})
 }

@@ -124,6 +124,20 @@ Adapters should keep depending on `KV`; this is the long tail that interface
 deliberately does not cover. See
 [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
 
+### Driver options
+
+`AddOption` appends a `redis.Options` mutator applied when the client is built
+in `Start` — the settings `Config` does not model.
+
+```go
+rdb.AddOption(func(o *redis.Options) {
+    o.MaxRetries = 5
+})
+```
+
+Call it before `Start`. Options are kept and re-applied on every restart, after
+the component's own settings, so a mutator can override `Config`.
+
 ---
 
 ## API reference

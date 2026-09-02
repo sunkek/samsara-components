@@ -48,6 +48,14 @@ boot escalates to a full component restart cycle. **Direction.** Optional bounde
 connect-retry inside `Start` before giving up.
 
 ### X3. No escape hatch for raw driver options
+**Status: shipped** for postgresql, redis and s3 in `postgresql/v0.5.0`,
+`redis/v0.8.0` and `s3/v0.6.0` (2026-09-02): each takes a native mutator
+(`func(*pgxpool.Config)`, `func(*redis.Options)`, `func(*s3.Options)`) applied
+when the handle is built in `Start`, re-applied on every restart. `fiber` is
+left out on purpose — it builds its app from a `fiber.Config` value, not option
+functions, so the pattern does not port; a fiber escape hatch would be a
+different design and is not covered by this item.
+
 Only `WithLogger`/`WithName` are exposed. Anything the `Config` struct doesn't model
 is unreachable. The grpc/grpcclient components already solved this with `AddOption`;
 port that pattern to fiber/postgresql/redis/s3 so callers can pass native driver

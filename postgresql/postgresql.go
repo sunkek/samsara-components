@@ -146,6 +146,10 @@ type Component struct {
 	log  Logger
 	name string
 
+	// optsMu guards opts, which Start reads and AddOption appends to.
+	optsMu sync.Mutex
+	opts   []func(*pgxpool.Config)
+
 	// mu guards pool and stopCh across the Start/Stop/restart lifecycle.
 	mu     sync.RWMutex
 	pool   *pgxpool.Pool
@@ -223,6 +227,34 @@ func (c *Component) getPool() *pgxpool.Pool {
 	return c.pool
 }
 
+// AddOption appends a native [pgxpool.Config] mutator applied when the pool is
+// created during [Component.Start] — the escape hatch for driver settings
+// [Config] does not model, such as connection lifetimes, AfterConnect hooks, or
+// a custom tracer.
+//
+// AddOption must be called before Start; options added later apply only from
+// the next Start, which the supervisor runs on restart. Options are kept, so
+// every restart re-applies them in the order added, after this component's own
+// settings — a mutator can therefore override Config.
+//
+//	db.AddOption(func(cfg *pgxpool.Config) {
+//	    cfg.MaxConnLifetime = time.Hour
+//	})
+func (c *Component) AddOption(opt func(*pgxpool.Config)) {
+	c.optsMu.Lock()
+	c.opts = append(c.opts, opt)
+	c.optsMu.Unlock()
+}
+
+// driverOptions returns the caller-supplied option mutators.
+func (c *Component) driverOptions() []func(*pgxpool.Config) {
+	c.optsMu.Lock()
+	defer c.optsMu.Unlock()
+	out := make([]func(*pgxpool.Config), len(c.opts))
+	copy(out, c.opts)
+	return out
+}
+
 // Start creates the connection pool, pings the server to confirm reachability,
 // calls ready() to unblock the supervisor, then blocks until Stop or ctx
 // cancellation.
@@ -246,6 +278,10 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	}
 	if c.cfg.MinConns > 0 {
 		poolCfg.MinConns = c.cfg.MinConns
+	}
+
+	for _, opt := range c.driverOptions() {
+		opt(poolCfg)
 	}
 
 	connectCtx, cancel := context.WithTimeout(ctx, c.cfg.connectTimeout())

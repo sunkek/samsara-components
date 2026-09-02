@@ -166,6 +166,10 @@ type Component struct {
 	log  Logger
 	name string
 
+	// optsMu guards opts, which Start reads and AddOption appends to.
+	optsMu sync.Mutex
+	opts   []func(*s3.Options)
+
 	// mu guards client, presigner, engine, and stopCh.
 	mu        sync.RWMutex
 	client    *s3.Client
@@ -257,6 +261,34 @@ func (c *Component) getPresigner() *s3.PresignClient {
 	return c.presigner
 }
 
+// AddOption appends a native [s3.Options] mutator applied when the AWS client
+// is created during [Component.Start] — the escape hatch for driver settings
+// [Config] does not model, such as retry strategy, custom HTTP client, or
+// request checksum behaviour.
+//
+// AddOption must be called before Start; options added later apply only from
+// the next Start, which the supervisor runs on restart. Options are kept, so
+// every restart re-applies them in the order added, after this component's own
+// settings — a mutator can therefore override Config.
+//
+//	store.AddOption(func(o *s3.Options) {
+//	    o.RetryMaxAttempts = 5
+//	})
+func (c *Component) AddOption(opt func(*s3.Options)) {
+	c.optsMu.Lock()
+	c.opts = append(c.opts, opt)
+	c.optsMu.Unlock()
+}
+
+// driverOptions returns the caller-supplied option mutators.
+func (c *Component) driverOptions() []func(*s3.Options) {
+	c.optsMu.Lock()
+	defer c.optsMu.Unlock()
+	out := make([]func(*s3.Options), len(c.opts))
+	copy(out, c.opts)
+	return out
+}
+
 // Start loads the AWS config, initialises the S3 client, verifies connectivity,
 // calls ready(), then blocks until Stop or ctx cancellation.
 //
@@ -298,6 +330,8 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 			o.BaseEndpoint = &c.cfg.Endpoint
 		})
 	}
+
+	clientOpts = append(clientOpts, c.driverOptions()...)
 
 	client := s3.NewFromConfig(awsCfg, clientOpts...)
 	presigner := s3.NewPresignClient(client)

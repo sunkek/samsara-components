@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/sunkek/samsara-components/redis"
 )
 
@@ -220,4 +221,10 @@ func TestClient_NilAfterStop(t *testing.T) {
 	if comp.Client() != nil {
 		t.Fatal("expected Client to be nil after Stop")
 	}
+}
+
+// AddOption before Start is safe on a component that never starts.
+func TestAddOption_BeforeStart(t *testing.T) {
+	comp := redis.New(redis.Config{})
+	comp.AddOption(func(*goredis.Options) {})
 }

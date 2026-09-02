@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/sunkek/samsara-components/redis"
 )
 
@@ -609,5 +610,22 @@ func TestIntegration_Client_UsableAfterStart(t *testing.T) {
 	}
 	if got != "v" {
 		t.Fatalf("got %q, want %q", got, "v")
+	}
+}
+
+// TestIntegration_AddOption_Applied exercises ROADMAP X3: a native
+// redis.Options mutator must reach the client the component builds.
+func TestIntegration_AddOption_Applied(t *testing.T) {
+	comp := testComp(t)
+	comp.AddOption(func(o *goredis.Options) { o.MaxRetries = 7 })
+	startComp(t, comp)
+
+	if got := comp.Client().Options().MaxRetries; got != 7 {
+		t.Fatalf("MaxRetries = %d, want 7 — AddOption did not reach the client", got)
+	}
+	// The component's own settings still apply: the mutator adds, it does not
+	// replace the built options.
+	if got := comp.Client().Options().Addr; got != testAddr {
+		t.Errorf("Addr = %q, want %q", got, testAddr)
 	}
 }

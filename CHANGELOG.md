@@ -8,6 +8,27 @@ across all of them.
 
 ---
 
+## postgresql/v0.5.0, redis/v0.8.0, s3/v0.6.0 — 2026-09-02
+
+### Added
+- **postgresql, redis, s3:** `AddOption`, the raw-driver escape hatch these
+  three were missing, ported from `grpc`/`grpcclient` — ROADMAP X3. Each takes
+  a native mutator (`func(*pgxpool.Config)`, `func(*redis.Options)`,
+  `func(*s3.Options)`) applied when the driver handle is built in `Start`, so
+  settings `Config` does not model — retry strategy, connection lifetimes,
+  `AfterConnect` hooks, a custom HTTP client — are reachable without a wrapper
+  change.
+
+  Mutators run after the component's own settings, so they can override
+  `Config`, and are kept rather than consumed: every supervisor restart
+  re-applies them in the order added. Adding one after `Start` affects the next
+  `Start`, not the running handle.
+
+  `fiber` is deliberately not included: its app is built from a `fiber.Config`
+  value rather than option functions, so the same shape does not port.
+
+---
+
 ## s3/v0.5.0 — 2026-09-02
 
 ### Added

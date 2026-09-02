@@ -132,6 +132,21 @@ startup, so `Start` has already run. Working on the pool directly bypasses the
 component's logging and lifecycle handling; prefer `DB` for anything it covers.
 See [ADR-0005](../docs/adr/0005-driver-escape-hatch-accessors.md).
 
+### Driver options
+
+`AddOption` appends a `pgxpool.Config` mutator applied when the pool is built in
+`Start` — the settings `Config` does not model.
+
+```go
+db.AddOption(func(cfg *pgxpool.Config) {
+    cfg.MaxConnLifetime = time.Hour
+})
+```
+
+Call it before `Start`. Options are kept and re-applied on every restart, after
+the component's own settings (including `MaxConns`/`MinConns`), so a mutator can
+override `Config`.
+
 ---
 
 ## API reference
