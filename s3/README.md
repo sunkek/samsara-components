@@ -127,6 +127,8 @@ s3.Config{
     KeyID            string        // access key ID
     Secret           string        // secret access key
 
+    HealthBucket      string        // default: "" — real bucket to probe; empty means synthetic probe
+
     ConnectTimeout    time.Duration // default: 10s — startup check deadline
     PresignTTL        time.Duration // default: 15m — presigned URL lifetime
     UploadPartSize    int64         // default: 8 MiB — multipart chunk size, floor 5 MiB
@@ -234,10 +236,39 @@ URL is returned.
 
 ## Health checking
 
-`*Component` implements `samsara.HealthChecker`. Health is verified by
-sending a `HeadBucket` request to a synthetic bucket name. A 404 or 403
-response confirms the endpoint is reachable and credentials are signing
-correctly — no `ListBuckets` permission required.
+`*Component` implements `samsara.HealthChecker`. Health is verified by sending
+one `HeadBucket` request per probe, and `Start` runs the same check before it
+reports ready.
+
+By default (`HealthBucket` empty) the probe addresses a synthetic bucket name.
+A 404 or 403 response confirms the endpoint is reachable and credentials are
+signing correctly — no `ListBuckets` permission required. The limit of this
+check is that a credential scoped to the wrong buckets still reports healthy:
+403 is indistinguishable from "that bucket isn't ours."
+
+Set `HealthBucket` to a bucket the application actually uses and the probe
+turns strict — only a successful `HeadBucket` is healthy:
+
+```go
+store := s3.New(s3.Config{
+    Endpoint:     "https://s3.us-east-1.amazonaws.com",
+    Region:       "us-east-1",
+    KeyID:        keyID,
+    Secret:       secret,
+    HealthBucket: "media",
+})
+```
+
+| Response on `HealthBucket` | Result |
+|----------------------------|--------|
+| 2xx | healthy |
+| 403 | `ErrProbeForbidden` — credential not scoped for the bucket |
+| 404 | `ErrProbeBucketMissing` — bucket does not exist |
+| network error | returned as-is |
+
+Both are checkable with `errors.Is`, and both fail `Start` as well as `Health`,
+so a mis-scoped deployment is caught at boot rather than on the first upload.
+The credential needs `s3:ListBucket` on that bucket for the probe to succeed.
 
 ---
 

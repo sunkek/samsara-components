@@ -104,6 +104,13 @@ fields for SSE, object metadata, tagging, or explicit `Content-Length`.
 rather than pushing every caller through the accessor.
 
 ### S3. `Health` HeadBuckets a synthetic bucket and treats 403 as healthy
+**Status: shipped** in `s3/v0.5.0` (2026-09-02). `Config.HealthBucket` points
+the probe at a real bucket and makes it strict — 403 becomes
+`ErrProbeForbidden`, 404 becomes `ErrProbeBucketMissing`, in `Start` as well as
+`Health`. Empty keeps the old synthetic probe, so the change is additive. The
+per-probe request count is unchanged (one `HeadBucket`); making the probe
+optional or cheaper was not part of this item.
+
 `Health` re-runs `verifyConnectivity` (`s3/s3.go`), which issues
 `HeadBucket` against a synthetic bucket name (`s3/s3.go`) every probe interval.
 This adds a request per health check and, because it accepts 403 as "reachable,"

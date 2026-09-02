@@ -8,6 +8,24 @@ across all of them.
 
 ---
 
+## s3/v0.5.0 — 2026-09-02
+
+### Added
+- **s3:** `Config.HealthBucket` makes the connectivity probe address a real
+  bucket instead of a synthetic name. With it set, only a successful
+  `HeadBucket` counts as healthy: 403 is reported as `ErrProbeForbidden` and
+  404 as `ErrProbeBucketMissing`, both checkable with `errors.Is`. This closes
+  ROADMAP S3 — the synthetic probe accepts 403 as "reachable", so a credential
+  scoped to the wrong buckets reported healthy until the first upload failed.
+  The strict check runs in `Start` too, so a mis-scoped deployment fails at
+  boot rather than in traffic.
+
+  Leaving `HealthBucket` empty keeps the previous synthetic-probe behaviour
+  unchanged, so this is additive for existing callers. Setting it requires the
+  credential to hold `s3:ListBucket` on that bucket.
+
+---
+
 ## grpc/v0.3.0, rabbitmq/v0.6.0, sqlite/v0.3.0 — 2026-08-28
 
 ### Added

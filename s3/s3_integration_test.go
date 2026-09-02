@@ -20,6 +20,7 @@ package s3_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -116,6 +117,56 @@ func TestIntegration_Health(t *testing.T) {
 	defer cancel()
 	if err := comp.Health(ctx); err != nil {
 		t.Fatalf("Health returned error on live endpoint: %v", err)
+	}
+}
+
+// A configured HealthBucket that exists and is readable stays healthy against
+// a live endpoint.
+func TestIntegration_Health_ConfiguredBucket(t *testing.T) {
+	comp := s3.New(s3.Config{
+		Endpoint:         testEndpoint,
+		Region:           testRegion,
+		KeyID:            testKeyID,
+		Secret:           testSecret,
+		HealthBucket:     testBucket,
+		ConnectTimeout:   30 * time.Second,
+		PathStyleForcing: true,
+	}, s3.WithLogger(&testLogger{t}))
+	startComp(t, comp)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := comp.Health(ctx); err != nil {
+		t.Fatalf("Health on configured bucket %q: %v", testBucket, err)
+	}
+}
+
+// A HealthBucket that does not exist fails Start, rather than passing the
+// probe the way the synthetic bucket does.
+func TestIntegration_Health_MissingBucketFailsStart(t *testing.T) {
+	comp := s3.New(s3.Config{
+		Endpoint:         testEndpoint,
+		Region:           testRegion,
+		KeyID:            testKeyID,
+		Secret:           testSecret,
+		HealthBucket:     "sc-s3-test-absent-bucket",
+		ConnectTimeout:   30 * time.Second,
+		PathStyleForcing: true,
+	}, s3.WithLogger(&testLogger{t}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- comp.Start(ctx, func() { t.Error("Start became ready on a missing HealthBucket") }) }()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, s3.ErrProbeBucketMissing) {
+			t.Fatalf("Start = %v, want ErrProbeBucketMissing", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Start timed out")
 	}
 }
 

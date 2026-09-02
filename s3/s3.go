@@ -67,6 +67,20 @@ type Config struct {
 	// in parallel. Defaults to 5.
 	UploadConcurrency int
 
+	// HealthBucket is a real bucket the connectivity probe addresses, used by
+	// both the [Component.Start] check and every [Component.Health] call.
+	//
+	// Leave empty to probe a synthetic bucket name instead: that proves the
+	// endpoint is reachable and requests are signed correctly, but reports
+	// healthy even when the credential is not scoped for the buckets the
+	// application actually uses.
+	//
+	// Set it to a bucket the application reads or writes and the probe turns
+	// strict: only a successful HeadBucket is healthy, 403 is reported as
+	// [ErrProbeForbidden] and 404 as [ErrProbeBucketMissing]. The credential
+	// then needs s3:ListBucket (HeadBucket) permission on that bucket.
+	HealthBucket string
+
 	// PathStyleForcing enables path-style S3 addressing (bucket in URL path
 	// instead of subdomain). Required by MinIO and some other providers.
 	PathStyleForcing bool
@@ -246,10 +260,12 @@ func (c *Component) getPresigner() *s3.PresignClient {
 // Start loads the AWS config, initialises the S3 client, verifies connectivity,
 // calls ready(), then blocks until Stop or ctx cancellation.
 //
-// Connectivity is verified using HeadBucket on a well-formed but likely
-// nonexistent bucket — this exercises the signing chain and endpoint without
-// requiring ListBuckets permission (which is often not granted to
-// service-account credentials).
+// Connectivity is verified using HeadBucket. With [Config.HealthBucket] empty
+// the probe addresses a well-formed but likely nonexistent bucket — this
+// exercises the signing chain and endpoint without requiring ListBuckets
+// permission (which is often not granted to service-account credentials).
+// With [Config.HealthBucket] set the probe addresses that real bucket and
+// Start fails when it is missing or the credential cannot see it.
 //
 // Start is safe to call multiple times across restarts.
 func (c *Component) Start(ctx context.Context, ready func()) error {
@@ -286,12 +302,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	client := s3.NewFromConfig(awsCfg, clientOpts...)
 	presigner := s3.NewPresignClient(client)
 
-	// Verify the signing chain and endpoint are functional. HeadBucket with
-	// a synthetic bucket name will return NoSuchBucket (404) or
-	// AccessDenied — both confirm the endpoint is reachable and credentials
-	// are being signed correctly. Only a network-level failure returns an
-	// error we treat as a startup failure.
-	if err := verifyConnectivity(connectCtx, client); err != nil {
+	if err := c.probe(connectCtx, client); err != nil {
 		return fmt.Errorf("s3: connectivity check failed: %w", err)
 	}
 
@@ -334,32 +345,20 @@ func (c *Component) Stop(_ context.Context) error {
 
 // Health implements samsara.HealthChecker.
 // Returns nil if the endpoint is reachable and credentials are valid.
+//
+// When [Config.HealthBucket] is set the probe also proves the credential can
+// see that bucket, failing with [ErrProbeForbidden] or [ErrProbeBucketMissing]
+// otherwise. Each probe costs one HeadBucket request per health-check
+// interval.
 func (c *Component) Health(ctx context.Context) error {
 	client := c.getClient()
 	if client == nil {
 		return ErrNotReady
 	}
-	return verifyConnectivity(ctx, client)
+	return c.probe(ctx, client)
 }
 
-// verifyConnectivity sends a HeadBucket request with a synthetic bucket name.
-// Any response (including 404/403) confirms the endpoint is reachable; only
-// a network error or credential-signing failure is treated as a failure.
-func verifyConnectivity(ctx context.Context, client *s3.Client) error {
-	// "samsara-health-probe" is intentionally not a real bucket name.
-	// The response will be 404 NoSuchBucket or 403 AccessDenied — both prove
-	// the endpoint and signing chain are working. The name is all-lowercase
-	// alphanumeric-and-hyphens, satisfying AWS S3 bucket naming rules so we
-	// get a 404/403 rather than a 400 InvalidBucketName on real AWS.
-	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: ptrOf("samsara-health-probe"),
-	})
-	if err == nil {
-		return nil // unexpectedly found; still healthy
-	}
-	// 404 and 403 responses from the server confirm connectivity.
-	if isExpectedHealthError(err) {
-		return nil
-	}
-	return err
+// probe runs the connectivity check for this component's configuration.
+func (c *Component) probe(ctx context.Context, client *s3.Client) error {
+	return verifyConnectivity(ctx, client, c.cfg.probeBucket(), c.cfg.HealthBucket != "")
 }
