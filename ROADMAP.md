@@ -155,14 +155,32 @@ cluster addrs or sentinel/failover config. **Direction.** Optional
 `ClusterClient`/`FailoverClient` modes selected via config.
 
 ### R3. Limited pool tuning
+**Status: closed by X3, not implemented** (2026-09-03). `AddOption(func(*redis.Options))`
+reaches every knob this item lists — `MinIdleConns`, `PoolTimeout`,
+`ConnMaxLifetime`, `ConnMaxIdleTime`, `MaxRetries` are all fields of
+`redis.Options` — and the mutator is re-applied on every restart. Adding them
+as `Config` fields instead is the option
+[ADR-0008](./docs/adr/0008-addoption-is-the-construction-escape-hatch.md)
+explicitly rejected, because
+[ADR-0007](./docs/adr/0007-config-fields-are-the-interface.md) names field
+count as the budget to defend and this is exactly the long tail it warns
+about. Reopen a single knob only if it turns out most callers set it.
+
 Only `PoolSize` (`redis/redis.go`). No `MinIdleConns`, `PoolTimeout`,
 `ConnMaxLifetime`, `ConnMaxIdleTime`, or client-level `MaxRetries`. **Direction.**
 Surface the go-redis pool knobs on `Config`.
 
 ### R4. `Scan` batches at a fixed size and eagerly materialises the whole match set
-`Scan` (`redis/client.go`) returns a `[]string` of every match — a large
-keyspace scan is unbounded memory. **Direction.** Add a streaming/callback variant
-(`ScanFunc(ctx, pattern, func(key) error)`) and/or a configurable batch count.
+**Status: shipped** (2026-09-03) — `ScanFunc(ctx, pattern, func(key) error)` is
+on the `KV` seam. Peak memory is now one SCAN batch rather than the whole match
+set; the callback's error is returned unwrapped, so a sentinel both stops
+iteration early and survives `errors.Is`. The batch count stays a fixed
+internal constant: no caller has asked to tune it, and a `Config` field is the
+growth ADR-0007 argues against. `Scan` is unchanged and remains correct for
+small match sets.
+
+`Scan` (`redis/client.go`) returned a `[]string` of every match — a large
+keyspace scan was unbounded memory.
 
 ---
 
@@ -177,18 +195,41 @@ The `DB` interface covers `Select`/`Get`/`Exec`/`BeginTx` only, so `CopyFrom`
 unreachable. The accessor reaches all of them.
 
 ### P2. Minimal pool tuning
+**Status: closed by X3, not implemented** (2026-09-03). Same reasoning as R3:
+`AddOption(func(*pgxpool.Config))` reaches `MaxConnLifetime`,
+`MaxConnIdleTime`, `MaxConnLifetimeJitter`, `HealthCheckPeriod`,
+`AfterConnect` and `BeforeAcquire` — all fields of `pgxpool.Config` — and is
+re-applied on every restart. Promoting them to `Config` fields is the rejected
+option in ADR-0008.
+
 Only `MaxConns`/`MinConns` (`postgresql/postgresql.go`). No
 `MaxConnLifetime`, `MaxConnIdleTime`, `MaxConnLifetimeJitter`, `HealthCheckPeriod`,
 or `AfterConnect`/`BeforeAcquire` hooks despite pgxpool supporting them.
 **Direction.** Surface these on `Config`.
 
 ### P3. Shallow health, no pool stats exposed
+**Status: partly closed** (2026-09-03) — the exposure half is served by
+`Pool()` ([ADR-0005](./docs/adr/0005-driver-escape-hatch-accessors.md)):
+`comp.Pool().Stat()` is the pool stats this item asked for, and a separate
+`Stat()` accessor on `*Component` would only re-export it. What remains open is
+the behavioural half — feeding those stats to `Config.OnOperation` as gauges
+(the remainder of X1) and optionally failing `Health` on sustained
+acquire-wait saturation, which is a policy decision, not an accessor.
+
 `Health` is a single `pool.Ping` (`postgresql/postgresql.go`) — it says
 nothing about pool saturation or waiting acquires, and `pool.Stat()` is not exposed.
 **Direction.** Expose `Stat()` (feeds X1) and optionally fail health on sustained
 acquire-wait saturation.
 
 ### P4. TLS only via SSLMode / URI
+**Status: open, but narrower than written** (2026-09-03). Client certs are
+reachable today through `AddOption(func(*pgxpool.Config))`, which can set
+`ConnConfig.TLSConfig` directly, so this is no longer a blocker. It stays open
+on the ADR-0007 test rather than the ADR-0008 one: redis already models TLS as
+a `Config` block, and matching that is a consistency argument for a field, not
+a long-tail-knob argument against one. Decide it by whether callers actually
+set client certs on Postgres.
+
 No cert-file config surface (the redis component has one via its TLS block). Callers
 needing client certs must hand-build the DSN. **Direction.** Add a TLS config block
 mirroring redis.

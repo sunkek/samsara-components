@@ -147,15 +147,52 @@ the component's own settings, so a mutator can override `Config`.
 | Method | Description |
 |--------|-------------|
 | `Set(ctx, key, value, ttl)` | Store a value; use `ttl=0` for no expiry |
+| `SetNX(ctx, key, value, ttl)` | Store only if absent; reports whether this call won the claim |
 | `Get(ctx, key)` | Retrieve a string value; returns `ErrNil` if absent |
 | `Del(ctx, keys...)` | Delete one or more keys; returns count removed |
 | `Exists(ctx, keys...)` | Count how many of the given keys exist |
 | `Incr(ctx, key)` | Atomically increment an integer; first call returns 1 |
 | `Expire(ctx, key, ttl)` | Set a TTL on an existing key |
 | `TTL(ctx, key)` | Get remaining TTL; negative if absent or no expiry |
-| `Scan(ctx, pattern)` | Iterate all matching keys safely (cursor-based) |
+| `Scan(ctx, pattern)` | Collect all matching keys (cursor-based) |
+| `ScanFunc(ctx, pattern, fn)` | Stream matching keys to `fn`, one batch in memory |
 
 `*Component` satisfies `KV`.
+
+#### Scanning a large key space
+
+`Scan` accumulates every match before returning, so peak memory grows with the
+size of the match set — a broad pattern over a large keyspace can be unbounded.
+`ScanFunc` holds one SCAN batch at a time instead:
+
+```go
+err := kv.ScanFunc(ctx, "session:*", func(key string) error {
+    return archive(ctx, key)
+})
+```
+
+Iteration stops at the first error. An error returned by the callback comes
+back unwrapped, so a sentinel is also the way to stop early:
+
+```go
+var errEnough = errors.New("enough")
+
+err := kv.ScanFunc(ctx, "session:*", func(key string) error {
+    n++
+    if n == 100 {
+        return errEnough
+    }
+    return nil
+})
+if err != nil && !errors.Is(err, errEnough) {
+    return err
+}
+```
+
+SCAN gives no snapshot guarantee: a key present for the whole iteration is seen
+at least once, keys created or deleted while it runs may or may not appear, and
+the callback can see the same key twice. Both methods share this; `Scan` can
+return duplicates for the same reason.
 
 ### Sentinel errors
 

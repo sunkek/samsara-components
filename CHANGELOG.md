@@ -8,6 +8,38 @@ across all of them.
 
 ---
 
+## Unreleased
+
+### Added
+- **redis:** `ScanFunc(ctx, pattern, fn)` on the `KV` seam — the streaming form
+  of `Scan`, closing ROADMAP R4. `Scan` accumulates every match before
+  returning, so a broad pattern over a large keyspace is unbounded memory in
+  the caller's process; `ScanFunc` holds one SCAN batch at a time and hands
+  each key to the callback, so peak memory no longer depends on how many keys
+  match.
+
+  Iteration stops at the first error. An error from the callback is returned
+  unwrapped, which makes a sentinel both the early-stop mechanism and something
+  `errors.Is` can recognise; an error from Redis is wrapped as usual. Before
+  `Start`, after `Stop`, and mid-restart it returns `ErrNotReady` without
+  calling the callback, and it reports to `Config.OnOperation` as
+  `redis.scanfunc`.
+
+  `Scan` is unchanged and stays the right call when the match set is known to
+  be small. Neither method deduplicates: SCAN offers no snapshot guarantee, so
+  a key can be visited twice.
+
+  The SCAN batch size stays a fixed internal constant rather than becoming a
+  `Config` field — no caller has needed to tune it, and
+  [ADR-0007](./docs/adr/0007-config-fields-are-the-interface.md) treats field
+  count as the budget to defend.
+
+### Fixed
+- **redis:** the `KV` method table in `redis/README.md` was missing `SetNX`,
+  which has been on the interface since `redis/v0.2.0`.
+
+---
+
 ## postgresql/v0.5.0, redis/v0.8.0, s3/v0.5.0 — 2026-09-02
 
 ### Added
