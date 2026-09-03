@@ -9,6 +9,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// scanBatchSize is the COUNT hint passed to each SCAN call by [Component.Scan]
+// and [Component.ScanFunc]. It bounds the keys held per round-trip, not the
+// total: Redis treats COUNT as a hint, so a batch may come back larger or
+// smaller. Fixed rather than configurable — no caller has needed to tune it,
+// and a tunable is a permanent addition to Config's surface
+// (docs/adr/0007-config-fields-are-the-interface.md).
+const scanBatchSize = 100
+
 // KV is the interface that domain adapters should depend on: keyed values
 // with TTLs, which is what this component wraps.
 // *Component satisfies it; depend on KV rather than *Component to keep
@@ -64,7 +72,28 @@ type KV interface {
 
 	// Scan iterates over keys matching pattern and returns all matches.
 	// Uses cursor-based iteration internally; safe for large key spaces.
+	//
+	// The whole match set is held in memory. Prefer [KV.ScanFunc] when the
+	// pattern can match an unbounded number of keys.
 	Scan(ctx context.Context, pattern string) ([]string, error)
+
+	// ScanFunc iterates over keys matching pattern and calls fn once per key,
+	// holding only one SCAN batch in memory at a time. It is the streaming
+	// form of [KV.Scan] and the one to use when the match set is large or its
+	// size is not known in advance.
+	//
+	// Iteration stops at the first error: if fn returns one it is returned
+	// unwrapped, so a caller can pass a sentinel and check it with errors.Is.
+	// Returning an error is therefore also how to stop early.
+	//
+	//	err := c.ScanFunc(ctx, "session:*", func(key string) error {
+	//	    return sink.Write(key)
+	//	})
+	//
+	// SCAN gives no snapshot guarantee: a key present for the whole iteration
+	// is seen at least once, but keys created or deleted while it runs may or
+	// may not appear, and fn can see the same key twice.
+	ScanFunc(ctx context.Context, pattern string, fn func(key string) error) error
 }
 
 // Compile-time assertion: *Component satisfies KV.
@@ -187,7 +216,9 @@ func (c *Component) TTL(ctx context.Context, key string) (time.Duration, error) 
 }
 
 // Scan iterates over all keys matching pattern using cursor-based SCAN and
-// returns the complete set. Safe for large key spaces — does not use KEYS.
+// returns the complete set. Does not use KEYS, so it does not block the
+// server — but it accumulates every match, so peak memory grows with the size
+// of the match set. Use [Component.ScanFunc] when that set may be large.
 //
 // pattern follows Redis glob-style syntax: * matches any sequence,
 // ? matches a single character, [abc] matches a character class.
@@ -198,7 +229,7 @@ func (c *Component) Scan(ctx context.Context, pattern string) ([]string, error) 
 			keys   []string
 		)
 		for {
-			batch, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
+			batch, next, err := client.Scan(ctx, cursor, pattern, scanBatchSize).Result()
 			if err != nil {
 				return nil, fmt.Errorf("redis scan %q: %w", pattern, err)
 			}
@@ -209,5 +240,40 @@ func (c *Component) Scan(ctx context.Context, pattern string) ([]string, error) 
 			}
 		}
 		return keys, nil
+	})
+}
+
+// ScanFunc iterates over keys matching pattern using cursor-based SCAN and
+// calls fn once per key. Only one batch of keys is held at a time, so peak
+// memory is bounded by the batch size rather than by the number of matches —
+// this is the form to use for a large or unbounded key space.
+//
+// Iteration stops at the first error. An error from fn is returned unwrapped,
+// so a sentinel survives errors.Is and can be used to stop early; an error
+// from Redis is wrapped. Returns [ErrNotReady] before Start, after Stop, and
+// while the supervisor is restarting the component — fn is not called.
+//
+// pattern follows the same Redis glob syntax as [Component.Scan]. SCAN offers
+// no snapshot guarantee: keys present throughout are seen at least once, keys
+// added or removed during iteration may or may not appear, and fn may see the
+// same key more than once.
+func (c *Component) ScanFunc(ctx context.Context, pattern string, fn func(key string) error) error {
+	return observeErr(c, opScanFunc, func(client *redis.Client) error {
+		var cursor uint64
+		for {
+			batch, next, err := client.Scan(ctx, cursor, pattern, scanBatchSize).Result()
+			if err != nil {
+				return fmt.Errorf("redis scanfunc %q: %w", pattern, err)
+			}
+			for _, key := range batch {
+				if err := fn(key); err != nil {
+					return err
+				}
+			}
+			cursor = next
+			if cursor == 0 {
+				return nil
+			}
+		}
 	})
 }

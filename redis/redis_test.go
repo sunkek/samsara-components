@@ -167,6 +167,16 @@ func TestErrNotReady_NoPanic(t *testing.T) {
 			t.Fatalf("Scan: want ErrNotReady, got %v", err)
 		}
 	})
+	t.Run("ScanFunc", func(t *testing.T) {
+		called := false
+		err := c.ScanFunc(ctx, "*", func(string) error { called = true; return nil })
+		if !errors.Is(err, redis.ErrNotReady) {
+			t.Fatalf("ScanFunc: want ErrNotReady, got %v", err)
+		}
+		if called {
+			t.Fatal("ScanFunc: callback ran with no live connection")
+		}
+	})
 	t.Run("Health", func(t *testing.T) {
 		if err := c.Health(ctx); !errors.Is(err, redis.ErrNotReady) {
 			t.Fatalf("Health: want ErrNotReady, got %v", err)

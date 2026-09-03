@@ -11,15 +11,16 @@ import (
 // blow up label cardinality in the sink.
 // See docs/adr/0006-metrics-behind-the-narrow-interface.md.
 const (
-	opSet    = "redis.set"
-	opSetNX  = "redis.setnx"
-	opGet    = "redis.get"
-	opDel    = "redis.del"
-	opExists = "redis.exists"
-	opIncr   = "redis.incr"
-	opExpire = "redis.expire"
-	opTTL    = "redis.ttl"
-	opScan   = "redis.scan"
+	opSet      = "redis.set"
+	opSetNX    = "redis.setnx"
+	opGet      = "redis.get"
+	opDel      = "redis.del"
+	opExists   = "redis.exists"
+	opIncr     = "redis.incr"
+	opExpire   = "redis.expire"
+	opTTL      = "redis.ttl"
+	opScan     = "redis.scan"
+	opScanFunc = "redis.scanfunc"
 )
 
 // record reports one completed operation to the configured sink. A nil sink

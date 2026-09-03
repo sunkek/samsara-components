@@ -513,6 +513,87 @@ func TestIntegration_Scan_NoMatch(t *testing.T) {
 	}
 }
 
+// ScanFunc streams the same match set Scan returns, one key at a time.
+// The subject is typed as redis.KV: the seam is what callers depend on.
+func TestIntegration_ScanFunc(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+
+	var kv redis.KV = comp
+
+	prefix := uniqueKey(t, "scanfunc")
+	keys := []string{prefix + ":a", prefix + ":b", prefix + ":c"}
+	for _, k := range keys {
+		_ = kv.Set(ctx, k, "v", 0)
+	}
+	t.Cleanup(func() { _, _ = kv.Del(context.Background(), keys...) })
+
+	seen := map[string]bool{}
+	if err := kv.ScanFunc(ctx, prefix+":*", func(key string) error {
+		seen[key] = true
+		return nil
+	}); err != nil {
+		t.Fatalf("ScanFunc: %v", err)
+	}
+	// SCAN may repeat a key, so compare the distinct set rather than a count
+	// of callback invocations.
+	if len(seen) != len(keys) {
+		t.Fatalf("expected %d distinct keys, got %d: %v", len(keys), len(seen), seen)
+	}
+	for _, k := range keys {
+		if !seen[k] {
+			t.Fatalf("key %q not visited", k)
+		}
+	}
+}
+
+// An error from the callback stops iteration and comes back unwrapped, so a
+// caller can use a sentinel to stop early and recognise it with errors.Is.
+func TestIntegration_ScanFunc_CallbackErrorStops(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+	ctx := context.Background()
+
+	var kv redis.KV = comp
+
+	prefix := uniqueKey(t, "scanfuncerr")
+	keys := []string{prefix + ":a", prefix + ":b", prefix + ":c"}
+	for _, k := range keys {
+		_ = kv.Set(ctx, k, "v", 0)
+	}
+	t.Cleanup(func() { _, _ = kv.Del(context.Background(), keys...) })
+
+	errStop := errors.New("stop")
+	calls := 0
+	err := kv.ScanFunc(ctx, prefix+":*", func(string) error {
+		calls++
+		return errStop
+	})
+	if !errors.Is(err, errStop) {
+		t.Fatalf("want the callback error back, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected iteration to stop after 1 call, got %d", calls)
+	}
+}
+
+// A cancelled context ends the scan rather than running it to completion.
+func TestIntegration_ScanFunc_ContextCancelled(t *testing.T) {
+	comp := testComp(t)
+	startComp(t, comp)
+
+	var kv redis.KV = comp
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := kv.ScanFunc(ctx, "_sc_redis_test:*", func(string) error { return nil })
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled, got %v", err)
+	}
+}
+
 // TestIntegration_TLS_Start connects to a TLS-enabled Redis instance.
 //
 // Gated on the REDIS_TLS_ADDR env var (host:port). Skipped when unset, so
