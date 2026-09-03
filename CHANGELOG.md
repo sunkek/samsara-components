@@ -8,7 +8,7 @@ across all of them.
 
 ---
 
-## Unreleased
+## redis/v0.9.0 — 2026-09-03
 
 ### Added
 - **redis:** `ScanFunc(ctx, pattern, fn)` on the `KV` seam — the streaming form
