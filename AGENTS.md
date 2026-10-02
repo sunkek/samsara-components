@@ -110,3 +110,21 @@ field moves.
 Issues and PRs live on GitHub. To resolve an issue reference, find the spec
 behind a branch, or file one, read
 [docs/agents/issue-tracker.md](./docs/agents/issue-tracker.md).
+
+## Agent skills
+
+`.claude/skills/` also carries Matt Pocock's engineering skills, copied from
+[mattpocock/skills](https://github.com/mattpocock/skills) at `d81f3a1`.
+
+### Issue tracker
+
+GitHub Issues on `sunkek/samsara-components`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles, each label named after its role. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.md`.
