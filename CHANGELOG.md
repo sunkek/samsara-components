@@ -8,6 +8,30 @@ across all of them.
 
 ---
 
+## Unreleased
+
+### Fixed
+- **grpc:** `Stop` returned at once when a context cancellation had already
+  begun the shutdown, without waiting for in-flight RPCs to drain — the
+  ordering a supervisor that cancels and then stops produces. Whichever path
+  takes the server now drains it, and the other waits for that drain.
+- **grpc:** `AddOption` server options were applied *before* the component's
+  keepalive and TLS settings, so `Config` silently won any conflict. They now
+  apply after, as [ADR-0008](./docs/adr/0008-addoption-is-the-construction-escape-hatch.md)
+  requires of all five modules, and `grpc` and `grpcclient` document the order
+  and the re-application on every `Start`. A caller option that sets
+  `KeepaliveParams`, `MaxRecvMsgSize` or `Creds` now overrides `Config`.
+- **redis:** `ScanFunc`'s `Config.OnOperation` report timed the caller's
+  callback along with the SCAN calls, and reported a callback error — the
+  documented way to stop early — as a failed `redis.scanfunc` operation. It now
+  times the SCAN calls alone and reports a callback stop as success.
+- **redis:** operation errors are tagged `redis: <op>`, the module form every
+  other component uses, instead of `redis <op>`; `ScanFunc`'s Redis errors now
+  read `redis: scan`, like `Scan`'s. Matching on error text is not supported;
+  `errors.Is` behaves as before.
+
+---
+
 ## redis/v0.9.0 — 2026-09-03
 
 ### Added

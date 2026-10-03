@@ -49,7 +49,9 @@ same rule ADR-0003 follows for types at the interface.
 - **Mutators apply after the component's own settings.** A mutator can override
   anything `Config` set, including `postgresql.MaxConns` and the endpoint.
   That is intended: the escape hatch is worth nothing if the component wins
-  every conflict. The ordering is documented on each method.
+  every conflict. The ordering is documented on each method. `grpc` predates
+  the rule and applied caller options before its keepalive and TLS settings;
+  it was brought in line, so all five order the same way.
 - **Mutators are kept, not consumed.** They are stored on the component and
   re-applied on every `Start`, so a supervisor restart rebuilds the handle with
   the caller's settings intact. A component that applied them once would
@@ -89,3 +91,10 @@ ADR is the precedent for adding one if that changes.
   read the handle rather than assume its settings.
 - Pressure on `Config` to grow should fall: the answer to "the component does
   not expose X" is a mutator for the tail, and a field only when X is common.
+- It closes two ROADMAP items without implementing them as written. R3 (redis
+  pool tuning) and P2 (postgresql pool tuning) asked for driver pool knobs as
+  `Config` fields; every knob they list is a field of the struct the mutator
+  receives, and a field per knob is the option rejected above. P4 (postgresql
+  TLS) is narrowed, not closed: client certificates are reachable through the
+  mutator, but whether postgresql should mirror redis's TLS block is a
+  consistency question for ADR-0007, not this one.
