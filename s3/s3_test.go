@@ -3,10 +3,14 @@ package s3_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/sunkek/samsara-components/s3"
 )
 
@@ -209,4 +213,62 @@ func TestClient_NilAfterStop(t *testing.T) {
 	if comp.Client() != nil {
 		t.Fatal("expected Client to be nil after Stop")
 	}
+}
+
+// ----------------------------------------------------------------------------
+// Driver escape hatch: AddOption
+// ----------------------------------------------------------------------------
+
+// Options added before Start reach the AWS client, and are re-applied on every
+// later Start so a supervisor restart does not silently drop them. The effect
+// is observed on the wire — the option sets an AppID, which the SDK puts in the
+// User-Agent of the probe request — rather than through the Client escape hatch.
+func TestAddOption_AppliedOnEveryStart(t *testing.T) {
+	const appID = "sc-addoption-test"
+	var (
+		mu     sync.Mutex
+		agents []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		agents = append(agents, r.UserAgent())
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	var applied int
+	comp := s3.New(probeConfig(srv.URL, ""), s3.WithLogger(&testLogger{t}))
+	comp.AddOption(func(o *awss3.Options) {
+		applied++
+		o.AppID = appID
+	})
+
+	for run := 1; run <= 2; run++ {
+		mu.Lock()
+		agents = nil
+		mu.Unlock()
+
+		if err := startComponent(t, comp); err != nil {
+			t.Fatalf("Start %d: %v", run, err)
+		}
+		if applied != run {
+			t.Fatalf("after Start %d the option ran %d times, want %d", run, applied, run)
+		}
+		mu.Lock()
+		got := append([]string(nil), agents...)
+		mu.Unlock()
+		if len(got) == 0 || !strings.Contains(got[0], "app/"+appID) {
+			t.Errorf("Start %d: probe User-Agent %q lacks app/%s — AddOption did not reach the client", run, got, appID)
+		}
+		if err := comp.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop %d: %v", run, err)
+		}
+	}
+}
+
+// AddOption before Start is safe on a component that never starts.
+func TestAddOption_BeforeStart(t *testing.T) {
+	comp := s3.New(s3.Config{})
+	comp.AddOption(func(*awss3.Options) {})
 }

@@ -694,19 +694,86 @@ func TestIntegration_Client_UsableAfterStart(t *testing.T) {
 	}
 }
 
-// TestIntegration_AddOption_Applied exercises ROADMAP X3: a native
-// redis.Options mutator must reach the client the component builds.
+// TestIntegration_AddOption_Applied exercises ROADMAP X3 and ADR-0008: a
+// native redis.Options mutator must reach the client the component builds, and
+// every Start must re-apply it. The effect is observed from outside — the
+// mutator selects DB 1, and a separate client finds the component's writes
+// there — rather than through the Client escape hatch.
 func TestIntegration_AddOption_Applied(t *testing.T) {
 	comp := testComp(t)
-	comp.AddOption(func(o *goredis.Options) { o.MaxRetries = 7 })
-	startComp(t, comp)
+	applied := 0
+	comp.AddOption(func(o *goredis.Options) {
+		applied++
+		o.DB = 1
+	})
+	ctx := context.Background()
 
-	if got := comp.Client().Options().MaxRetries; got != 7 {
-		t.Fatalf("MaxRetries = %d, want 7 — AddOption did not reach the client", got)
+	db1 := goredis.NewClient(&goredis.Options{Addr: testAddr, DB: 1})
+	t.Cleanup(func() { _ = db1.Close() })
+
+	var kv redis.KV = comp
+	for run := 1; run <= 2; run++ {
+		startComp(t, comp)
+		key := uniqueKey(t, fmt.Sprintf("addoption%d", run))
+		if err := kv.Set(ctx, key, "v", time.Minute); err != nil {
+			t.Fatalf("run %d: Set: %v", run, err)
+		}
+		t.Cleanup(func() { db1.Del(context.Background(), key) })
+
+		got, err := db1.Get(ctx, key).Result()
+		if err != nil || got != "v" {
+			t.Fatalf("run %d: key not in DB 1 (got %q, %v) — AddOption did not reach the client", run, got, err)
+		}
+		if applied != run {
+			t.Fatalf("run %d: mutator applied %d times, want %d", run, applied, run)
+		}
+		if err := comp.Stop(ctx); err != nil {
+			t.Fatalf("run %d: Stop: %v", run, err)
+		}
 	}
-	// The component's own settings still apply: the mutator adds, it does not
-	// replace the built options.
-	if got := comp.Client().Options().Addr; got != testAddr {
-		t.Errorf("Addr = %q, want %q", got, testAddr)
+}
+
+// ScanFunc reports the SCAN calls alone: time spent in the callback is not part
+// of the duration, and a callback error is the caller's stop signal, not a
+// failed operation.
+func TestIntegration_ScanFunc_MetricsExcludeCallback(t *testing.T) {
+	r := &recorder{}
+	comp := redis.New(
+		redis.Config{Host: "localhost", Port: testPort, ConnectTimeout: 10 * time.Second, OnOperation: r.record},
+		redis.WithLogger(&testLogger{t}),
+	)
+	startComp(t, comp)
+	ctx := context.Background()
+
+	var kv redis.KV = comp
+
+	key := uniqueKey(t, "scanfuncmetrics")
+	_ = kv.Set(ctx, key, "v", time.Minute)
+	t.Cleanup(func() { _, _ = kv.Del(context.Background(), key) })
+
+	const callbackTime = 300 * time.Millisecond
+	errStop := errors.New("stop")
+	err := kv.ScanFunc(ctx, key, func(string) error {
+		time.Sleep(callbackTime)
+		return errStop
+	})
+	if !errors.Is(err, errStop) {
+		t.Fatalf("want the callback error back, got %v", err)
+	}
+
+	var got []observation
+	for _, o := range r.all() {
+		if o.op == "redis.scanfunc" {
+			got = append(got, o)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected one redis.scanfunc observation, got %v", got)
+	}
+	if got[0].err != nil {
+		t.Errorf("callback error reached the sink: %v", got[0].err)
+	}
+	if got[0].d >= callbackTime {
+		t.Errorf("duration %v includes the callback's %v", got[0].d, callbackTime)
 	}
 }

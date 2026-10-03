@@ -321,14 +321,36 @@ func TestIntegration_Pool_UsableAfterStart(t *testing.T) {
 	}
 }
 
-// TestIntegration_AddOption_Applied exercises ROADMAP X3: a native
-// pgxpool.Config mutator must reach the pool the component builds.
+// TestIntegration_AddOption_Applied exercises ROADMAP X3 and ADR-0008: a
+// native pgxpool.Config mutator must reach the pool the component builds, and
+// every Start must re-apply it. The effect is observed through the DB seam —
+// the mutator sets application_name and the session reports it back — rather
+// than through the Pool escape hatch.
 func TestIntegration_AddOption_Applied(t *testing.T) {
 	comp := testComp(t)
-	comp.AddOption(func(cfg *pgxpool.Config) { cfg.MaxConnLifetime = 42 * time.Minute })
-	startComp(t, comp)
+	const appName = "sc-addoption-test"
+	applied := 0
+	comp.AddOption(func(cfg *pgxpool.Config) {
+		applied++
+		cfg.ConnConfig.RuntimeParams["application_name"] = appName
+	})
+	ctx := context.Background()
 
-	if got := comp.Pool().Config().MaxConnLifetime; got != 42*time.Minute {
-		t.Fatalf("MaxConnLifetime = %v, want 42m — AddOption did not reach the pool", got)
+	var db postgresql.DB = comp
+	for run := 1; run <= 2; run++ {
+		startComp(t, comp)
+		var got string
+		if err := db.Get(ctx, &got, "SELECT current_setting('application_name')"); err != nil {
+			t.Fatalf("run %d: Get: %v", run, err)
+		}
+		if got != appName {
+			t.Fatalf("run %d: application_name = %q, want %q — AddOption did not reach the pool", run, got, appName)
+		}
+		if applied != run {
+			t.Fatalf("run %d: mutator applied %d times, want %d", run, applied, run)
+		}
+		if err := comp.Stop(ctx); err != nil {
+			t.Fatalf("run %d: Stop: %v", run, err)
+		}
 	}
 }
