@@ -394,5 +394,5 @@ func (c *Component) Health(ctx context.Context) error {
 
 // probe runs the connectivity check for this component's configuration.
 func (c *Component) probe(ctx context.Context, client *s3.Client) error {
-	return verifyConnectivity(ctx, client, c.cfg.probeBucket(), c.cfg.HealthBucket != "")
+	return verifyConnectivity(ctx, client, c.cfg)
 }

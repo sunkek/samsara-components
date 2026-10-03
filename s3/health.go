@@ -41,24 +41,25 @@ func (c Config) probeBucket() string {
 	return syntheticProbeBucket
 }
 
-// verifyConnectivity sends a HeadBucket request against the probe bucket.
+// verifyConnectivity sends a HeadBucket request against cfg's probe bucket.
 //
-// With a synthetic bucket (strict false) any server answer — including 404 and
-// 403 — confirms the endpoint is reachable and the signing chain works; only a
-// network- or credential-level failure is reported.
+// With the synthetic bucket ([Config.HealthBucket] empty) any server answer —
+// including 404 and 403 — confirms the endpoint is reachable and the signing
+// chain works; only a network- or credential-level failure is reported.
 //
-// With a configured real bucket (strict true) only a successful HeadBucket
+// With a configured [Config.HealthBucket] only a successful HeadBucket
 // counts as healthy: 403 becomes [ErrProbeForbidden] and 404 becomes
 // [ErrProbeBucketMissing], so a credential scoped to the wrong buckets is
 // reported instead of passing as reachable.
-func verifyConnectivity(ctx context.Context, client *s3.Client, bucket string, strict bool) error {
+func verifyConnectivity(ctx context.Context, client *s3.Client, cfg Config) error {
+	bucket := cfg.probeBucket()
 	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: ptrOf(bucket),
 	})
 	if err == nil {
 		return nil
 	}
-	if strict {
+	if cfg.HealthBucket != "" {
 		switch statusCode(err) {
 		case 403:
 			return fmt.Errorf("%w: %q: %w", ErrProbeForbidden, bucket, err)
@@ -68,7 +69,8 @@ func verifyConnectivity(ctx context.Context, client *s3.Client, bucket string, s
 		return err
 	}
 	// 404 and 403 responses from the server confirm connectivity.
-	if isExpectedHealthError(err) {
+	switch statusCode(err) {
+	case 403, 404:
 		return nil
 	}
 	return err
