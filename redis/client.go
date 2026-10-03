@@ -114,7 +114,7 @@ var ErrNotReady = errors.New("redis: client not initialised")
 func (c *Component) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
 	return observeErr(c, opSet, func(client *redis.Client) error {
 		if err := client.Set(ctx, key, value, ttl).Err(); err != nil {
-			return fmt.Errorf("redis set %q: %w", key, err)
+			return fmt.Errorf("redis: set %q: %w", key, err)
 		}
 		return nil
 	})
@@ -134,7 +134,7 @@ func (c *Component) SetNX(ctx context.Context, key string, value any, ttl time.D
 			return false, nil
 		}
 		if err != nil {
-			return false, fmt.Errorf("redis setnx %q: %w", key, err)
+			return false, fmt.Errorf("redis: setnx %q: %w", key, err)
 		}
 		return true, nil
 	})
@@ -149,7 +149,7 @@ func (c *Component) Get(ctx context.Context, key string) (string, error) {
 			if errors.Is(err, redis.Nil) {
 				return "", ErrNil
 			}
-			return "", fmt.Errorf("redis get %q: %w", key, err)
+			return "", fmt.Errorf("redis: get %q: %w", key, err)
 		}
 		return val, nil
 	})
@@ -160,7 +160,7 @@ func (c *Component) Del(ctx context.Context, keys ...string) (int64, error) {
 	return observe(c, opDel, func(client *redis.Client) (int64, error) {
 		n, err := client.Del(ctx, keys...).Result()
 		if err != nil {
-			return 0, fmt.Errorf("redis del: %w", err)
+			return 0, fmt.Errorf("redis: del: %w", err)
 		}
 		return n, nil
 	})
@@ -171,7 +171,7 @@ func (c *Component) Exists(ctx context.Context, keys ...string) (int64, error) {
 	return observe(c, opExists, func(client *redis.Client) (int64, error) {
 		n, err := client.Exists(ctx, keys...).Result()
 		if err != nil {
-			return 0, fmt.Errorf("redis exists: %w", err)
+			return 0, fmt.Errorf("redis: exists: %w", err)
 		}
 		return n, nil
 	})
@@ -185,7 +185,7 @@ func (c *Component) Incr(ctx context.Context, key string) (int64, error) {
 	return observe(c, opIncr, func(client *redis.Client) (int64, error) {
 		n, err := client.Incr(ctx, key).Result()
 		if err != nil {
-			return 0, fmt.Errorf("redis incr %q: %w", key, err)
+			return 0, fmt.Errorf("redis: incr %q: %w", key, err)
 		}
 		return n, nil
 	})
@@ -197,7 +197,7 @@ func (c *Component) Expire(ctx context.Context, key string, ttl time.Duration) (
 	return observe(c, opExpire, func(client *redis.Client) (bool, error) {
 		ok, err := client.Expire(ctx, key, ttl).Result()
 		if err != nil {
-			return false, fmt.Errorf("redis expire %q: %w", key, err)
+			return false, fmt.Errorf("redis: expire %q: %w", key, err)
 		}
 		return ok, nil
 	})
@@ -209,7 +209,7 @@ func (c *Component) TTL(ctx context.Context, key string) (time.Duration, error) 
 	return observe(c, opTTL, func(client *redis.Client) (time.Duration, error) {
 		d, err := client.TTL(ctx, key).Result()
 		if err != nil {
-			return 0, fmt.Errorf("redis ttl %q: %w", key, err)
+			return 0, fmt.Errorf("redis: ttl %q: %w", key, err)
 		}
 		return d, nil
 	})
@@ -224,20 +224,13 @@ func (c *Component) TTL(ctx context.Context, key string) (time.Duration, error) 
 // ? matches a single character, [abc] matches a character class.
 func (c *Component) Scan(ctx context.Context, pattern string) ([]string, error) {
 	return observe(c, opScan, func(client *redis.Client) ([]string, error) {
-		var (
-			cursor uint64
-			keys   []string
-		)
-		for {
-			batch, next, err := client.Scan(ctx, cursor, pattern, scanBatchSize).Result()
-			if err != nil {
-				return nil, fmt.Errorf("redis scan %q: %w", pattern, err)
-			}
+		var keys []string
+		_, err := scanBatches(ctx, client, pattern, func(batch []string) bool {
 			keys = append(keys, batch...)
-			cursor = next
-			if cursor == 0 {
-				break
-			}
+			return true
+		})
+		if err != nil {
+			return nil, err
 		}
 		return keys, nil
 	})
@@ -253,27 +246,58 @@ func (c *Component) Scan(ctx context.Context, pattern string) ([]string, error) 
 // from Redis is wrapped. Returns [ErrNotReady] before Start, after Stop, and
 // while the supervisor is restarting the component — fn is not called.
 //
+// The [Config.OnOperation] report times the SCAN calls alone, not fn, and an
+// error from fn is reported as success: it is the caller's stop signal, not a
+// failed operation.
+//
 // pattern follows the same Redis glob syntax as [Component.Scan]. SCAN offers
 // no snapshot guarantee: keys present throughout are seen at least once, keys
 // added or removed during iteration may or may not appear, and fn may see the
 // same key more than once.
 func (c *Component) ScanFunc(ctx context.Context, pattern string, fn func(key string) error) error {
-	return observeErr(c, opScanFunc, func(client *redis.Client) error {
-		var cursor uint64
-		for {
-			batch, next, err := client.Scan(ctx, cursor, pattern, scanBatchSize).Result()
-			if err != nil {
-				return fmt.Errorf("redis scanfunc %q: %w", pattern, err)
-			}
-			for _, key := range batch {
-				if err := fn(key); err != nil {
-					return err
-				}
-			}
-			cursor = next
-			if cursor == 0 {
-				return nil
+	// Not observe: the sink hears about the SCAN calls alone. Time spent in fn
+	// is the caller's, and an error from fn is the caller's stop signal, not a
+	// failed operation.
+	client := c.getClient()
+	if client == nil {
+		c.record(opScanFunc, 0, ErrNotReady)
+		return ErrNotReady
+	}
+	var fnErr error
+	elapsed, err := scanBatches(ctx, client, pattern, func(batch []string) bool {
+		for _, key := range batch {
+			if fnErr = fn(key); fnErr != nil {
+				return false
 			}
 		}
+		return true
 	})
+	c.record(opScanFunc, elapsed, err)
+	if err != nil {
+		return err
+	}
+	return fnErr
+}
+
+// scanBatches walks SCAN for pattern and hands each batch to visit until the
+// cursor wraps, a SCAN call fails, or visit returns false. It returns the time
+// spent in SCAN calls alone, so a caller's own work in visit stays out of the
+// metrics, and the wrapped Redis error, if any.
+func scanBatches(ctx context.Context, client *redis.Client, pattern string, visit func(batch []string) bool) (time.Duration, error) {
+	var (
+		cursor  uint64
+		elapsed time.Duration
+	)
+	for {
+		start := time.Now()
+		batch, next, err := client.Scan(ctx, cursor, pattern, scanBatchSize).Result()
+		elapsed += time.Since(start)
+		if err != nil {
+			return elapsed, fmt.Errorf("redis: scan %q: %w", pattern, err)
+		}
+		if !visit(batch) || next == 0 {
+			return elapsed, nil
+		}
+		cursor = next
+	}
 }

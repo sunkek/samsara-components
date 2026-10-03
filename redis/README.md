@@ -194,6 +194,11 @@ at least once, keys created or deleted while it runs may or may not appear, and
 the callback can see the same key twice. Both methods share this; `Scan` can
 return duplicates for the same reason.
 
+`ScanFunc` reports to `Config.OnOperation` as `redis.scanfunc`, timing the SCAN
+calls alone: time spent in the callback is not part of the duration, and an
+error from the callback is reported as success, since it is the caller's stop
+signal rather than a failed operation.
+
 ### Sentinel errors
 
 ```go
