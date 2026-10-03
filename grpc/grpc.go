@@ -104,17 +104,25 @@ type Component struct {
 
 	// stopCh is initialised in New so Stop-before-Start is safe.
 	stopCh chan struct{}
+
+	// drained is closed once the current run's server has fully stopped.
+	// Whichever shutdown path — Stop or ctx cancellation — takes the server
+	// drains it and closes drained; the other waits on it. Guarded by mu and
+	// initialised closed in New, since there is nothing to drain before Start.
+	drained chan struct{}
 }
 
 // New creates a Component from the supplied config.
 // The gRPC server is not started until [Component.Start] is called.
 func New(cfg Config, opts ...Option) *Component {
 	c := &Component{
-		cfg:    cfg,
-		log:    nopLogger{},
-		name:   "grpc",
-		stopCh: make(chan struct{}), // initialised so Stop-before-Start is safe
+		cfg:     cfg,
+		log:     nopLogger{},
+		name:    "grpc",
+		stopCh:  make(chan struct{}), // initialised so Stop-before-Start is safe
+		drained: make(chan struct{}),
 	}
+	close(c.drained)
 	for _, o := range opts {
 		o(c)
 	}
@@ -184,8 +192,11 @@ func (c *Component) Register(fn RegisterFunc) {
 
 // AddOption appends a [grpclib.ServerOption] (e.g. an interceptor chain) that
 // will be applied when the server is created during [Component.Start].
-// AddOption must be called before Start — options added after Start have no
-// effect on the running server.
+// AddOption must be called before Start; options added later apply only from
+// the next Start, which the supervisor runs on restart. Options are kept, so
+// every restart re-applies them in the order added, after this component's own
+// settings — an option can therefore override Config, such as its keepalive
+// policy or TLS credentials.
 //
 // Use this for unary and stream interceptors:
 //
@@ -219,14 +230,9 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 		return fmt.Errorf("grpc: listen %s: %w", c.cfg.addr(), err)
 	}
 
-	// Build ServerOptions: caller-supplied options first, then keepalive
-	// policy so that callers cannot accidentally override safety defaults.
-	c.optsMu.RLock()
-	extraOpts := make([]grpclib.ServerOption, len(c.opts))
-	copy(extraOpts, c.opts)
-	c.optsMu.RUnlock()
-
-	serverOpts := append(extraOpts, c.cfg.keepaliveOptions()...)
+	// Build ServerOptions: this component's own settings first, then the
+	// caller-supplied options, so an AddOption can override Config (ADR-0008).
+	serverOpts := c.cfg.keepaliveOptions()
 
 	// Optional TLS on the listener. Errors here are configuration mistakes
 	// (bad paths, malformed PEM) and fail the start.
@@ -239,6 +245,11 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	if creds != nil {
 		serverOpts = append(serverOpts, grpclib.Creds(creds))
 	}
+
+	c.optsMu.RLock()
+	serverOpts = append(serverOpts, c.opts...)
+	c.optsMu.RUnlock()
+
 	srv := grpclib.NewServer(serverOpts...)
 
 	// Register the gRPC health service. This allows orchestrators (Kubernetes
@@ -269,6 +280,8 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 	c.mu.Lock()
 	c.server = srv
 	c.serving = true
+	drained := make(chan struct{})
+	c.drained = drained
 	c.mu.Unlock()
 
 	c.log.Info("grpc: listening", "addr", c.cfg.addr())
@@ -320,6 +333,7 @@ func (c *Component) Start(ctx context.Context, ready func()) error {
 					srv2.Stop()
 					<-done
 				}
+				close(drained)
 			}
 		case <-stopCh:
 			// Stop() already handled shutdown — nothing to do.
@@ -371,6 +385,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	srv := c.server
 	c.server = nil // clear so the accessor reports not-ready
 	c.serving = false
+	drained := c.drained
 	c.mu.Unlock()
 
 	// Signal the currently-running Start (if any) to exit.
@@ -382,7 +397,14 @@ func (c *Component) Stop(ctx context.Context) error {
 	}
 
 	if srv == nil {
-		return nil // Stop called before Start — nothing to do
+		// Stop called before Start, or ctx cancellation already took the
+		// server: wait for that drain so Stop still returns only once
+		// in-flight RPCs have finished. drained is closed before Start.
+		select {
+		case <-drained:
+		case <-ctx.Done():
+		}
+		return nil
 	}
 
 	// GracefulStop drains in-flight RPCs then closes the listener.
@@ -401,6 +423,7 @@ func (c *Component) Stop(ctx context.Context) error {
 		srv.Stop()
 		<-done
 	}
+	close(drained)
 	return nil
 }
 

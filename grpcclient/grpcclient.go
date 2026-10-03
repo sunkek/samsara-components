@@ -144,8 +144,11 @@ func (c *Component) Name() string { return c.name }
 
 // AddOption appends a [grpclib.DialOption] (e.g. an interceptor chain) that
 // will be applied when the connection is created during [Component.Start].
-// AddOption must be called before Start — options added after Start have no
-// effect on the running connection.
+// AddOption must be called before Start; options added later apply only from
+// the next Start, which the supervisor runs on restart. Options are kept, so
+// every restart re-applies them in the order added, after this component's own
+// settings — an option can therefore override Config, such as its transport
+// credentials, message size limits or keepalive.
 //
 // Use this for unary and stream interceptors:
 //

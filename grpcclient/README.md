@@ -72,7 +72,9 @@ userAdapter := user.NewAdapter(pb.NewUserServiceClient(userServiceClient.Conn())
 ## Interceptors
 
 Use `AddOption` to inject unary and stream interceptors — for auth, logging,
-tracing, metrics, and so on. Must be called before `Start`.
+tracing, metrics, and so on. Must be called before `Start`. Options are
+re-applied on every restart, in the order added and after the component's own
+settings, so an option can override `Config`.
 
 ```go
 // Single interceptor:

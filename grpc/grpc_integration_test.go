@@ -17,13 +17,16 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	grpccomp "github.com/sunkek/samsara-components/grpc"
 	grpclib "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 )
 
 // freePort asks the OS for a free TCP port and releases it immediately.
@@ -323,5 +326,111 @@ func TestIntegration_AddOption_Interceptor(t *testing.T) {
 
 	if !interceptorCalled {
 		t.Fatal("unary interceptor was not called")
+	}
+}
+
+// TestIntegration_AddOption_OverridesConfig checks that caller options apply
+// after the component's own settings (ADR-0008): a MaxRecvMsgSize added through
+// AddOption must win over the Config-derived limit.
+func TestIntegration_AddOption_OverridesConfig(t *testing.T) {
+	port := freePort(t)
+	comp := testComp(t, port)
+	comp.AddOption(grpclib.MaxRecvMsgSize(16))
+	startComp(t, comp)
+
+	client := healthpb.NewHealthClient(dialComp(t, port))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := client.Check(ctx, &healthpb.HealthCheckRequest{Service: strings.Repeat("x", 64)})
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("expected ResourceExhausted from the 16-byte limit, got %v", err)
+	}
+}
+
+// TestIntegration_Stop_WaitsForContextCancelDrain covers Stop arriving after a
+// context cancellation has already begun the shutdown: Stop must still return
+// only once in-flight RPCs have drained.
+func TestIntegration_Stop_WaitsForContextCancelDrain(t *testing.T) {
+	port := freePort(t)
+	comp := testComp(t, port)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	comp.AddOption(grpclib.ChainUnaryInterceptor(
+		func(
+			ctx context.Context,
+			req any,
+			_ *grpclib.UnaryServerInfo,
+			handler grpclib.UnaryHandler,
+		) (any, error) {
+			close(entered)
+			<-release
+			return handler(ctx, req)
+		},
+	))
+
+	readyCh := make(chan struct{})
+	startErr := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { startErr <- comp.Start(ctx, func() { close(readyCh) }) }()
+	select {
+	case <-readyCh:
+	case <-time.After(15 * time.Second):
+		t.Fatal("Start timed out")
+	}
+
+	rpcErr := make(chan error, 1)
+	go func() {
+		rpcCtx, rpcCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer rpcCancel()
+		_, err := healthpb.NewHealthClient(dialComp(t, port)).Check(rpcCtx, &healthpb.HealthCheckRequest{})
+		rpcErr <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RPC never reached the server")
+	}
+
+	// Cancel first and wait until the cancellation path has taken the server,
+	// so Stop is guaranteed to arrive second.
+	cancel()
+	deadline := time.Now().Add(5 * time.Second)
+	for comp.Server() != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("context cancellation did not begin shutdown")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	stopped := make(chan error, 1)
+	go func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stopCancel()
+		stopped <- comp.Stop(stopCtx)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned while an RPC was still in flight")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-rpcErr; err != nil {
+		t.Fatalf("in-flight RPC failed: %v", err)
+	}
+	select {
+	case err := <-stopped:
+		if err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not return after the RPC drained")
+	}
+	if err := <-startErr; err != nil {
+		t.Fatalf("Start: %v", err)
 	}
 }
