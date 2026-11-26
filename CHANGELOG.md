@@ -8,6 +8,27 @@ across all of them.
 
 ---
 
+## fiber/v0.6.2, grpc/v0.3.1, grpcclient/v0.2.3 — 2026-11-26
+
+### Security
+- **fiber:** require `github.com/andybalholm/brotli` v1.2.7 (GO-2026-6888) and
+  `github.com/klauspost/compress` v1.20.2 (GO-2026-6865). Both are reachable
+  through Fiber's compression middleware. Raising the minimums here means a
+  consumer resolving `fiber` with `go mod tidy` no longer lands on the
+  vulnerable versions.
+- **grpc, grpcclient:** require `golang.org/x/net` v0.60.0, which fixes four
+  HTTP/2 advisories (GO-2026-6603, GO-2026-6611, GO-2026-6612, GO-2026-6617)
+  reachable through grpc-go's transport.
+
+### Changed
+- **grpc, grpcclient:** the module `go` directive is now 1.26, because
+  `golang.org/x/net` v0.60.0 requires it. Go 1.26 and 1.27 are the supported
+  releases, so this drops nothing that upstream still supports.
+- **build:** staticcheck v0.8.1 → v0.8.2 and govulncheck v1.7.0 → v1.10.0;
+  staticcheck v0.8.1 cannot read Go 1.27.4 export data.
+
+---
+
 ## redis/v0.9.0 — 2026-09-03
 
 ### Added

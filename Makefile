@@ -25,8 +25,8 @@ MODULES := $(shell find . -name go.mod -not -path './.git/*' | xargs -I{} dirnam
 # release cannot break the build on its own schedule. `go run pkg@version`
 # resolves through the module cache, which means no install step and no stale
 # binary already on PATH.
-STATICCHECK         ?= honnef.co/go/tools/cmd/staticcheck@v0.8.1
-GOVULNCHECK         ?= golang.org/x/vuln/cmd/govulncheck@v1.7.0
+STATICCHECK         ?= honnef.co/go/tools/cmd/staticcheck@v0.8.2
+GOVULNCHECK         ?= golang.org/x/vuln/cmd/govulncheck@v1.10.0
 
 # Coverage percentages shift between Go releases, so the baseline is recorded
 # against the version CI pins in .github/workflows/ci.yml. Regenerating with a
